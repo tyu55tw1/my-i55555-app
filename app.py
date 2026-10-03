@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import pandas as pd
+import html as _html
+
 import streamlit as st
 
 import core as K
@@ -26,12 +28,20 @@ div[data-testid=stVerticalBlockBorderWrapper]{border-radius:16px}
 .stButton>button,.stDownloadButton>button,.stLinkButton>a{border-radius:12px;font-weight:700;min-height:2.6rem}
 button[data-baseweb=tab]{font-weight:700}
 div[data-testid=stPills] button,div[data-testid=stPills] [role=button]{border-radius:999px!important;font-weight:700}
+.fcard{display:flex;gap:12px;background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 0 10px}
+.fcard img{width:84px;height:122px;object-fit:cover;border-radius:10px;flex:none}.fb{min-width:0;flex:1}
+.ft{font-weight:800;font-size:1.05rem;line-height:1.3}.ft a{color:inherit;text-decoration:none}.fm{opacity:.75;font-size:.85rem;margin:3px 0 4px}
+.lab{color:var(--ac);font-weight:800;font-size:.85rem;margin-top:6px}.tk{display:inline-block;margin-top:8px;color:var(--ac);font-weight:700;text-decoration:none}
 .chip{display:inline-block;padding:4px 12px;margin:3px 5px 3px 0;border-radius:10px;background:var(--soft);border:1px solid var(--line);color:inherit;font-weight:700;font-size:.92rem}
 .chip.past{opacity:.38}.chip.next{background:var(--ac);border-color:var(--ac);color:#fff;opacity:1}
 .badge{display:inline-block;padding:1px 9px;border-radius:7px;color:#fff;font-size:.78rem;font-weight:700;margin-right:6px}
 .ball{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--ac);color:#fff;font-weight:700;margin:3px;box-shadow:0 2px 6px rgba(217,68,26,.35)}
 .ball.z{background:#2f7de1;box-shadow:0 2px 6px rgba(47,125,225,.35)}
-@media(max-width:640px){.block-container{padding:.7rem .65rem 3rem}.hero{padding:13px 15px;border-radius:18px;gap:11px}.hero .ico{font-size:2rem}.hero h1{font-size:1.2rem}.hero p{font-size:.8rem}
+@media(max-width:640px){.fcard{padding:10px;gap:10px}.fcard img{width:62px;height:90px}.ft{font-size:1rem}
+div[data-testid=stHorizontalBlock]{flex-wrap:wrap!important;gap:.5rem!important}
+div[data-testid=stColumn],div[data-testid=column]{min-width:calc(50% - .5rem)!important;flex:1 1 calc(50% - .5rem)!important}
+div[data-testid=stPills]>div,div[data-testid=stPills] [data-testid=stButtonGroup]{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+div[data-testid=stPills] button{white-space:nowrap;flex:none}.block-container{padding:.7rem .65rem 3rem}.hero{padding:13px 15px;border-radius:18px;gap:11px}.hero .ico{font-size:2rem}.hero h1{font-size:1.2rem}.hero p{font-size:.8rem}
 .ball{width:31px;height:31px;font-size:.82rem;margin:2px}.chip{padding:3px 9px;font-size:.86rem}div[data-testid=stMetric]{padding:8px 11px}div[data-testid=stMetricValue]{font-size:1.35rem}.topbar small{display:none}}
 </style>""", unsafe_allow_html=True)
 
@@ -43,6 +53,9 @@ if hasattr(st, "pills"):
 else:
     page = st.radio("功能", PAGES, index=PAGES.index(_cur), horizontal=True, label_visibility="collapsed")
 st.session_state["pg"] = page
+
+
+_esc = lambda x: _html.escape(str(x), quote=True)
 
 
 def hero(icon, title, sub=""):
@@ -100,27 +113,28 @@ invoices = st.cache_data(ttl=3600, show_spinner="取得財政部號碼…")(K.fe
 bingo_draws = st.cache_data(ttl=300, show_spinner="取得賓果開獎…")(K.fetch_bingo)
 
 
-def show_sessions(sessions, day):
-    now, first = datetime.now(), True
+def sessions_html(sessions, day):
+    now, first, h = datetime.now(), True, ""
     for s in sessions:
-        h = f"<b style='color:#ff9a5c'>{s.label}</b><br>" if s.label else ""
+        if s.label:
+            h += f"<div class='lab'>{_esc(s.label)}</div>"
         for t in s.times:
             past = K.is_past(day, t, now)
             cls = "past" if past else ("next" if first and day == now.strftime("%Y/%m/%d") else "")
             first = first and (past or cls == "")
             h += f"<span class='chip {cls}'>{t}</span>"
-        st.markdown(h, unsafe_allow_html=True)
+    return h
 
 
-def film_card(title, rating, dur, poster, url, body):
-    c1, c2 = st.columns([1, 4])
-    if poster:
-        c1.image(poster)
+def card_html(title, url, meta, body, poster="", extra=""):
+    img = f"<img src='{_esc(poster)}' loading='lazy'>" if poster else ""
+    return (f"<div class='fcard'>{img}<div class='fb'><div class='ft'><a href='{_esc(url)}' target='_blank'>{_esc(title)}</a></div>"
+            f"<div class='fm'>{meta}</div>{body}{extra}</div></div>")
+
+
+def film_meta(rating, dur):
     name, col = K.RATINGS.get(rating, ("", "#444"))
-    c2.markdown(f"**[{title}]({url})**  " + (f"<span class='badge' style='background:{col}'>{name}</span>" if name else "")
-                + (f"⏱ {dur} 分" if dur else ""), unsafe_allow_html=True)
-    with c2:
-        body()
+    return (f"<span class='badge' style='background:{col}'>{name}</span>" if name else "") + (f"⏱ {dur} 分" if dur else "")
 
 
 # ═════════ 各頁 ═════════
@@ -137,7 +151,8 @@ if page == PAGES[0]:
     if cs:
         if mode == "依戲院":
             pool = [x for x in cs if flt in x.name.casefold()] or cs
-            c = next(x for x in pool if x.name == st.selectbox(f"戲院({len(pool)} 間)", [x.name for x in pool]))
+            st.caption(f"符合 {len(pool)} 間戲院")
+            c = pool[st.selectbox("戲院", range(len(pool)), format_func=lambda i: pool[i].name)]
             b1, b2, b3 = st.columns(3)
             if c.site:
                 b1.link_button("🌐 官方網站", c.site)
@@ -155,17 +170,16 @@ if page == PAGES[0]:
                     shows = [s for s in day.shows if not flt or flt in s.title.casefold() or flt in c.name.casefold()]
                     st.caption(f"共 {len(shows)} 部電影")
                     for sh in shows:
-                        with st.container(border=True):
-                            film_card(sh.title, sh.rating, sh.duration, sh.poster, sh.url,
-                                      lambda sh=sh, d=day: show_sessions(sh.sessions, d.key))
+                        st.markdown(card_html(sh.title, sh.url, film_meta(sh.rating, sh.duration),
+                                              sessions_html(sh.sessions, day.key), sh.poster), unsafe_allow_html=True)
         else:
             res = safe(scan, K.REGIONS[region])
             if res:
                 idx = K.build_index({c.cid: res[c.cid] for c in cs if c.cid in res})
                 films = sorted(idx.values(), key=lambda f: (-len(f.by_cinema), f.title))
                 films = [f for f in films if flt in f.title.casefold()] or films
-                f = next(x for x in films if f"{x.title}({len(x.by_cinema)}間)" == st.selectbox(
-                    f"電影({len(films)} 部)", [f"{x.title}({len(x.by_cinema)}間)" for x in films]))
+                st.caption(f"符合 {len(films)} 部電影")
+                f = films[st.selectbox("電影", range(len(films)), format_func=lambda i: f"{films[i].title}({len(films[i].by_cinema)}間)")]
                 meta = " ・ ".join(x for x in (f"片長 {f.duration} 分" if f.duration else "", K.RATINGS.get(f.rating, ("",))[0]) if x)
                 st.subheader(f"🎞️ {f.title}")
                 st.caption(meta)
@@ -175,12 +189,9 @@ if page == PAGES[0]:
                 cmap = {c.cid: c for c in cs}
                 for cid, m in f.by_cinema.items():
                     if day in m and cid in cmap:
-                        with st.container(border=True):
-                            c = cmap[cid]
-                            st.markdown(f"**{c.name}**　<span style='opacity:.6'>{c.address}</span>", unsafe_allow_html=True)
-                            show_sessions(m[day], day)
-                            if c.ticket:
-                                st.link_button("🎟️ 訂票", c.ticket)
+                        c = cmap[cid]
+                        tk = f"<a class='tk' href='{_esc(c.ticket)}' target='_blank'>🎟️ 線上訂票</a>" if c.ticket else ""
+                        st.markdown(card_html(c.name, c.url, _esc(c.address), sessions_html(m[day], day), extra=tk), unsafe_allow_html=True)
 elif page == PAGES[1]:
     hero("⛅", "天氣", "目前天氣・體感・紫外線・未來三天與穿衣建議")
     cities = {"台北": "Taipei", "新北": "New Taipei", "桃園": "Taoyuan", "台中": "Taichung", "台南": "Tainan",
