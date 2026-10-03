@@ -10,24 +10,39 @@ import streamlit as st
 
 import core as K
 
-st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
-.block-container{padding-top:1.4rem;max-width:1100px}
-.hero{display:flex;align-items:center;gap:16px;background:linear-gradient(120deg,#ff6b3d,#ff9a5c 55%,#f5c542);padding:18px 24px;border-radius:22px;margin-bottom:18px;color:#fff;box-shadow:0 10px 30px rgba(255,107,61,.25)}.hero .ico{font-size:2.6rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.25))}section[data-testid=stSidebar]{background:linear-gradient(180deg,#141821,#0e1117);border-right:1px solid #2a3242}.brand{font-size:1.25rem;font-weight:800;padding:4px 0 10px}div[data-testid=stVerticalBlockBorderWrapper]{border-radius:16px}div[data-testid=stMetric] label{opacity:.75}div[data-testid=stMetricValue]{font-weight:800}button[data-baseweb=tab]{font-weight:700}.stButton>button,.stDownloadButton>button{border-radius:12px;font-weight:700}footer{visibility:hidden}
-.hero h1{margin:0;font-size:1.7rem;color:#fff}.hero p{margin:2px 0 0;opacity:.92}
-.chip{display:inline-block;padding:3px 11px;margin:2px 4px 2px 0;border-radius:9px;background:#2a3241;font-weight:700;font-size:.92rem}
-.chip.past{background:#171b23;color:#556073}.chip.next{background:#ff6b3d;color:#fff}
+:root{--soft:rgba(128,128,128,.11);--line:rgba(128,128,128,.28);--ac:#d9441a}
+.block-container{padding:1.1rem 1.2rem 3.5rem;max-width:1100px}
+section[data-testid=stSidebar],[data-testid=stSidebarCollapsedControl],[data-testid=collapsedControl]{display:none}
+header[data-testid=stHeader]{background:transparent}footer{visibility:hidden}
+.topbar{display:flex;align-items:center;gap:10px;margin:0 0 4px;font-size:1.2rem;font-weight:800}
+.topbar small{font-weight:500;opacity:.55;font-size:.78rem}
+.hero{display:flex;align-items:center;gap:16px;background:linear-gradient(120deg,#ff6b3d,#ff9a5c 55%,#f5c542);padding:18px 24px;border-radius:22px;margin:10px 0 18px;color:#fff;box-shadow:0 10px 28px rgba(255,107,61,.28)}
+.hero h1{margin:0;font-size:1.65rem;color:#fff;padding:0}.hero p{margin:2px 0 0;opacity:.95;color:#fff}.hero .ico{font-size:2.6rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.25))}
+div[data-testid=stMetric]{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px 16px}
+div[data-testid=stMetricLabel] p{opacity:.72;font-size:.85rem}div[data-testid=stMetricValue]{font-weight:800}
+div[data-testid=stVerticalBlockBorderWrapper]{border-radius:16px}
+.stButton>button,.stDownloadButton>button,.stLinkButton>a{border-radius:12px;font-weight:700;min-height:2.6rem}
+button[data-baseweb=tab]{font-weight:700}
+div[data-testid=stPills] button,div[data-testid=stPills] [role=button]{border-radius:999px!important;font-weight:700}
+.chip{display:inline-block;padding:4px 12px;margin:3px 5px 3px 0;border-radius:10px;background:var(--soft);border:1px solid var(--line);color:inherit;font-weight:700;font-size:.92rem}
+.chip.past{opacity:.38}.chip.next{background:var(--ac);border-color:var(--ac);color:#fff;opacity:1}
 .badge{display:inline-block;padding:1px 9px;border-radius:7px;color:#fff;font-size:.78rem;font-weight:700;margin-right:6px}
-.ball{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#ff6b3d;color:#fff;font-weight:700;margin:3px}
-.ball.z{background:#4aa3ff}.big{font-size:2.4rem;font-weight:800;line-height:1.1}
-div[data-testid=stMetric]{background:#1a1f2b;border:1px solid #2a3242;border-radius:16px;padding:12px 16px}
-@media(max-width:640px){.hero h1{font-size:1.3rem}.big{font-size:1.9rem}.ball{width:32px;height:32px}}
+.ball{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--ac);color:#fff;font-weight:700;margin:3px;box-shadow:0 2px 6px rgba(217,68,26,.35)}
+.ball.z{background:#2f7de1;box-shadow:0 2px 6px rgba(47,125,225,.35)}
+@media(max-width:640px){.block-container{padding:.7rem .65rem 3rem}.hero{padding:13px 15px;border-radius:18px;gap:11px}.hero .ico{font-size:2rem}.hero h1{font-size:1.2rem}.hero p{font-size:.8rem}
+.ball{width:31px;height:31px;font-size:.82rem;margin:2px}.chip{padding:3px 9px;font-size:.86rem}div[data-testid=stMetric]{padding:8px 11px}div[data-testid=stMetricValue]{font-size:1.35rem}.topbar small{display:none}}
 </style>""", unsafe_allow_html=True)
 
 PAGES = ["🎬 電影時刻", "⛅ 天氣", "⛽ 油價", "📈 股票", "💱 匯率", "🧾 發票對獎", "🎰 賓果", "🏆 樂透", "🤖 AI 下注顧問", "📸 大頭照", "🔧 連線診斷"]
-st.sidebar.markdown("<div class='brand'>🧰 全方位生活助手</div>", unsafe_allow_html=True)
-page = st.sidebar.radio("功能", PAGES, label_visibility="collapsed")
-st.sidebar.caption("資料來源:開眼電影網・wttr.in・台灣中油・證交所・財政部・pilio")
+st.markdown("<div class='topbar'>🧰 全方位生活助手 <small>電影・天氣・油價・股票・匯率・發票・賓果・樂透</small></div>", unsafe_allow_html=True)
+_cur = st.session_state.get("pg", PAGES[0])
+if hasattr(st, "pills"):
+    page = st.pills("功能", PAGES, default=_cur, label_visibility="collapsed", key="nav_pills") or _cur
+else:
+    page = st.radio("功能", PAGES, index=PAGES.index(_cur), horizontal=True, label_visibility="collapsed")
+st.session_state["pg"] = page
 
 
 def hero(icon, title, sub=""):
@@ -463,3 +478,6 @@ else:
                 st.success(f"✅ {name}:{fn()}")
             except Exception as e:  # noqa: BLE001
                 st.error(f"❌ {name}:{type(e).__name__}: {e}")
+
+st.divider()
+st.caption("資料來源:開眼電影網・wttr.in・台灣中油・證交所・財政部・pilio・exchangerate-api　|　彩券相關內容僅供參考,請理性購買")
