@@ -36,7 +36,7 @@ from urllib.parse import quote, urljoin
 
 import requests
 import urllib3
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment, NavigableString
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -296,7 +296,14 @@ def parse_schedule(html: str, cinema: Cinema) -> Schedule:
         days.append(day)
         cur = None
 
-    for tag in soup.find_all(True):
+    for tag in soup.descendants:
+        if isinstance(tag, NavigableString):  # 場次時間:不論包在哪種標籤、或直接寫在上層項目裡,都能抓到
+            if cur is not None and not isinstance(tag, Comment):
+                norm = str(tag).strip().replace("：", ":")
+                if TIME_RE.fullmatch(norm):
+                    h, m = norm.split(":")
+                    cur["times"].append(f"{int(h):02d}:{m}")
+            continue
         name = tag.name
 
         if name == "img":
@@ -310,6 +317,9 @@ def parse_schedule(html: str, cinema: Cinema) -> Schedule:
             continue
 
         text = tag.get_text(" ", strip=True)
+        if not text and name == "a" and FILM_HREF.search(tag.get("href", "")):
+            img = tag.find("img")  # 只有海報圖的連結:改用 title / alt 當片名
+            text = (tag.get("title") or (img.get("alt") if img else "") or "").strip()
         if not text:
             continue
 
@@ -331,7 +341,7 @@ def parse_schedule(html: str, cinema: Cinema) -> Schedule:
                 if cur is not None and cur["film_id"] == fid and not cur["times"]:
                     continue
                 if day is None:
-                    today = datetime.now()
+                    today = tw_now()
                     wd = "一二三四五六日"[today.weekday()]
                     start_day(today.strftime("%Y/%m/%d"), f"{today.month}/{today.day} ({wd})")
                 cur = {
@@ -345,13 +355,8 @@ def parse_schedule(html: str, cinema: Cinema) -> Schedule:
             continue
 
         # ── 場次時間 ─────────────────────────────
-        norm = text.replace("：", ":")
-        if TIME_RE.fullmatch(norm) and name in ("li", "a", "span", "td", "div", "p", "b", "strong"):
-            if any(k.get_text(" ", strip=True) == text for k in tag.find_all(True, recursive=False)):
-                continue  # 交給最內層元素,避免重複計算
-            h, m = norm.split(":")
-            cur["times"].append(f"{int(h):02d}:{m}")
-            continue
+        if TIME_RE.fullmatch(text.replace("：", ":")):
+            continue  # 純時間的元素:時間已由文字節點處理,不可當成版本標籤
 
         # ── 片長 / 版本標籤 ──────────────────────
         if name == "li" and not tag.find(["li", "ul"]):
@@ -397,6 +402,10 @@ def build_index(schedules: dict[str, Schedule]) -> dict[str, Film]:
                 f.poster = f.poster or sh.poster
                 f.by_cinema.setdefault(cid, {})[day.key] = sh.sessions
     return idx
+
+
+def tw_now() -> datetime:
+    return datetime.now(timezone(timedelta(hours=8)))
 
 
 def is_past(day_key: str, hhmm: str, now: datetime) -> bool:
@@ -711,6 +720,46 @@ def _wx_text(node: dict) -> str:
         return ""
 
 
+ZH_WX = {"113": "晴朗", "116": "局部多雲", "119": "多雲", "122": "陰天", "143": "薄霧", "176": "局部有雨", "179": "局部有雪",
+         "182": "局部有凍雨", "185": "局部有凍毛毛雨", "200": "局部有雷雨", "227": "吹雪", "230": "暴風雪", "248": "有霧",
+         "260": "凍霧", "263": "零星毛毛雨", "266": "毛毛雨", "281": "凍毛毛雨", "284": "強凍毛毛雨", "293": "零星小雨",
+         "296": "小雨", "299": "時有中雨", "302": "中雨", "305": "時有大雨", "308": "大雨", "311": "小凍雨", "314": "凍雨",
+         "317": "小冰霰", "320": "冰霰", "323": "零星小雪", "326": "小雪", "329": "零星中雪", "332": "中雪", "335": "零星大雪",
+         "338": "大雪", "350": "冰珠", "353": "小陣雨", "356": "大陣雨", "359": "豪雨", "362": "小陣冰霰", "365": "陣冰霰",
+         "368": "小陣雪", "371": "陣雪", "374": "小陣冰珠", "377": "陣冰珠", "386": "局部雷陣雨", "389": "強雷陣雨",
+         "392": "局部雷陣雪", "395": "強雷陣雪"}
+AREA_ZH = {"Taipei": "台北", "New Taipei": "新北", "Taoyuan": "桃園", "Taichung": "台中", "Tainan": "台南",
+           "Kaohsiung": "高雄", "Hsinchu": "新竹", "Hualien": "花蓮", "Keelung": "基隆", "Chiayi": "嘉義", "Yilan": "宜蘭",
+           "Taitung": "台東", "Tokyo": "東京", "Osaka": "大阪", "Kyoto": "京都", "Seoul": "首爾", "Bangkok": "曼谷",
+           "Singapore": "新加坡", "Hong Kong": "香港", "London": "倫敦", "New York": "紐約", "Paris": "巴黎", "Sydney": "雪梨"}
+
+
+def _zh_desc(node: dict) -> str:
+    """天氣描述一律中文:先用天氣代碼對照;沒有才用 wttr 的中文字串並去掉夾雜的英文。"""
+    z = ZH_WX.get(str((node or {}).get("weatherCode", "")))
+    if z:
+        return z
+    t = _wx_text(node or {})
+    if re.search(r"[\u4e00-\u9fff]", t):
+        return re.sub(r"[A-Za-z][A-Za-z\s\-/']*", "", t).strip()
+    return _en2zh(t)
+
+
+_EN_ZH = [("thunder", "雷雨"), ("blizzard", "暴風雪"), ("snow", "下雪"), ("sleet", "冰霰"), ("freezing", "凍雨"),
+          ("heavy rain", "大雨"), ("torrential", "豪雨"), ("moderate rain", "中雨"), ("light rain", "小雨"),
+          ("shower", "陣雨"), ("drizzle", "毛毛雨"), ("rain", "有雨"), ("fog", "有霧"), ("mist", "薄霧"),
+          ("overcast", "陰天"), ("partly", "局部多雲"), ("cloud", "多雲"), ("sunny", "晴朗"), ("clear", "晴朗")]
+
+
+def _en2zh(t: str) -> str:
+    """英文天氣描述的保底翻譯(只在氣象網站沒給代碼與中文時使用)。"""
+    low = (t or "").lower()
+    for k, v in _EN_ZH:
+        if k in low:
+            return v
+    return "—" if low else ""
+
+
 def weather_icon(desc: str) -> str:
     d = desc.lower()
     if "雷" in d or "thunder" in d:
@@ -763,7 +812,7 @@ def parse_weather(j: dict) -> dict:
             label = f"{dt.month}/{dt.day} ({'一二三四五六日'[dt.weekday()]})"
         except ValueError:
             pass
-        desc = _wx_text(mid) if mid else ""
+        desc = _zh_desc(mid) if mid else ""
         days.append({"label": label, "hi": d.get("maxtempC", "-"), "lo": d.get("mintempC", "-"),
                      "rain": rain, "desc": desc, "icon": weather_icon(desc)})
     area = ""
@@ -771,14 +820,14 @@ def parse_weather(j: dict) -> dict:
         area = j["nearest_area"][0]["areaName"][0]["value"]
     except (KeyError, IndexError, TypeError):
         pass
-    desc = _wx_text(cur)
+    desc = _zh_desc(cur)
     desc_en = ""
     try:
         desc_en = cur["weatherDesc"][0]["value"]
     except (KeyError, IndexError, TypeError):
         pass
     return {
-        "area": area, "temp": cur.get("temp_C", "-"), "feel": cur.get("FeelsLikeC", "-"),
+        "area": AREA_ZH.get(area, area), "temp": cur.get("temp_C", "-"), "feel": cur.get("FeelsLikeC", "-"),
         "humid": cur.get("humidity", "-"), "wind": cur.get("windspeedKmph", "-"),
         "uv": cur.get("uvIndex", "0"), "vis": cur.get("visibility", "-"),
         "desc": desc or desc_en, "icon": weather_icon(f"{desc} {desc_en}"),

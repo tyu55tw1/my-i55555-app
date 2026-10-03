@@ -2,6 +2,7 @@
 """🧰 全方位生活助手 — Streamlit 版。  執行:streamlit run app.py"""
 import io
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -55,7 +56,7 @@ else:
 st.session_state["pg"] = page
 
 
-_esc = lambda x: _html.escape(str(x), quote=True)
+_esc = lambda x: _html.escape(str(x), quote=True).replace("$", "&#36;")
 
 
 def hero(icon, title, sub=""):
@@ -101,8 +102,13 @@ def scan(code):
         except Exception:  # noqa: BLE001
             return c.cid, None
 
-    with ThreadPoolExecutor(6) as ex:
-        return {cid: s for cid, s in ex.map(one, cs) if s}
+    with ThreadPoolExecutor(4) as ex:  # 並行太高會被網站限流,導致部分戲院抓不到
+        res = dict(ex.map(one, cs))
+    for c in cs:  # 失敗的再逐間重試一次
+        if res.get(c.cid) is None:
+            time.sleep(0.5)
+            res[c.cid] = one(c)[1]
+    return {k: v for k, v in res.items() if v}, [c.name for c in cs if not res.get(c.cid)]
 
 
 weather = st.cache_data(ttl=600, show_spinner="取得氣象…")(K.fetch_weather)
@@ -114,7 +120,7 @@ bingo_draws = st.cache_data(ttl=300, show_spinner="取得賓果開獎…")(K.fet
 
 
 def sessions_html(sessions, day):
-    now, first, h = datetime.now(), True, ""
+    now, first, h = K.tw_now(), True, ""
     for s in sessions:
         if s.label:
             h += f"<div class='lab'>{_esc(s.label)}</div>"
@@ -169,12 +175,17 @@ if page == PAGES[0]:
                     day = labels[st.radio("日期", list(labels), horizontal=True)]
                     shows = [s for s in day.shows if not flt or flt in s.title.casefold() or flt in c.name.casefold()]
                     st.caption(f"共 {len(shows)} 部電影")
+                    with st.expander("📋 解析到的電影清單(與官網不符時請參考)"):
+                        st.write("、".join(f"{x.title}({sum(len(z.times) for z in x.sessions)}場)" for x in day.shows))
                     for sh in shows:
                         st.markdown(card_html(sh.title, sh.url, film_meta(sh.rating, sh.duration),
                                               sessions_html(sh.sessions, day.key), sh.poster), unsafe_allow_html=True)
         else:
-            res = safe(scan, K.REGIONS[region])
-            if res:
+            got = safe(scan, K.REGIONS[region])
+            if got:
+                res, failed = got
+                if failed:
+                    st.warning(f"有 {len(failed)} 間戲院這次沒抓到({'、'.join(failed[:5])}{'…' if len(failed) > 5 else ''}),部分電影可能沒有顯示。按上方「🔄 重新整理」可重試。")
                 idx = K.build_index({c.cid: res[c.cid] for c in cs if c.cid in res})
                 films = sorted(idx.values(), key=lambda f: (-len(f.by_cinema), f.title))
                 films = [f for f in films if flt in f.title.casefold()] or films
@@ -201,7 +212,8 @@ elif page == PAGES[1]:
     q = c2.text_input("或輸入任何城市(英文名)", cities[pick] or "Tokyo").strip() or "Taipei"
     d = safe(weather, q)
     if d:
-        st.subheader(f"{d['icon']} {d['area'] or q}・{d['desc']}")
+        place = pick if cities[pick] else K.AREA_ZH.get(q, d["area"] or q)  # 常用城市一律顯示中文名
+        st.subheader(f"{d['icon']} {place}・{d['desc']}")
         a, b, c, e = st.columns(4)
         a.metric("🌡️ 氣溫", f"{d['temp']}°C"); b.metric("🥵 體感", f"{d['feel']}°C")
         c.metric("☔ 今日降雨機率", f"{d['rain']}%"); e.metric("💧 濕度", f"{d['humid']}%")
@@ -247,7 +259,7 @@ elif page == PAGES[3]:
         e.metric("昨收", f"{d['prev']:,.2f}")
         a, b = st.columns(2)
         a.metric("52 週高", f"{d['hi52']:,.2f}" if d["hi52"] else "--"); b.metric("52 週低", f"{d['lo52']:,.2f}" if d["lo52"] else "--")
-        st.caption(f"📡 {d['src']}　・資料時間 {d['asof'] or '—'}　・查詢 {datetime.now():%H:%M:%S}")
+        st.caption(f"📡 {d['src']}　・資料時間 {d['asof'] or '—'}　・查詢 {K.tw_now():%H:%M:%S}")
         if len(d["values"]) > 1:
             st.line_chart(pd.DataFrame({"收盤價": d["values"]}, index=d["labels"]), color="#ff6b3d")
 
@@ -277,7 +289,7 @@ elif page == PAGES[5]:
     ps = safe(invoices)
     if ps:
         p = ps[st.selectbox("期別", range(len(ps)), format_func=lambda i: ps[i]["title"])]
-        st.caption(f"領獎期間 {p['claim_start']} ~ {p['claim_end']}" + ("  ⚠️ 已過期" if datetime.now().date().isoformat() > p["claim_end"] else ""))
+        st.caption(f"領獎期間 {p['claim_start']} ~ {p['claim_end']}" + ("  ⚠️ 已過期" if K.tw_now().date().isoformat() > p["claim_end"] else ""))
         a, b = st.columns(2)
         a.metric("特別獎 1,000萬", p["special"][0]); b.metric("特獎 200萬", p["grand"][0])
         st.metric("頭獎 20萬", "   ".join(p["first"]))
