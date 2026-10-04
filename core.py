@@ -307,13 +307,14 @@ def parse_schedule(html: str, cinema: Cinema) -> Schedule:
         name = tag.name
 
         if name == "img":
-            src = tag.get("src", "")
             if cur is not None:
-                rm = RATING_IMG.search(src)
-                if rm and not cur["rating"] and rm.group(1) in RATINGS:
-                    cur["rating"] = rm.group(1)
-                if "photo101" in src and not cur["poster"]:
-                    cur["poster"] = urljoin(BASE, src)
+                for key in ("src", "data-src", "data-original", "data-lazy-src", "data-lazy"):
+                    src = tag.get(key, "") or ""
+                    rm = RATING_IMG.search(src)
+                    if rm and not cur["rating"] and rm.group(1) in RATINGS:
+                        cur["rating"] = rm.group(1)
+                    if not cur["poster"] and not rm and re.search(r"/photo\d*/", src):
+                        cur["poster"] = urljoin(BASE, src)
             continue
 
         text = tag.get_text(" ", strip=True)
@@ -987,6 +988,24 @@ def fetch_mis(code: str) -> dict | None:
 
 
 _twse_cache: dict[str, tuple[float, list[dict]]] = {}
+_twse_names: dict[str, str] = {}
+
+STOCK_ZH = {  # 內建中文名稱(證交所/Yahoo 都查不到中文時的保底)
+    "0050": "元大台灣50", "0056": "元大高股息", "006208": "富邦台50", "00713": "元大台灣高息低波", "00692": "富邦公司治理",
+    "00878": "國泰永續高股息", "00881": "國泰台灣5G+", "00891": "中信關鍵半導體", "00892": "富邦台灣半導體",
+    "00900": "富邦特選高股息30", "00919": "群益台灣精選高息", "00929": "復華台灣科技優息", "00934": "中信成長高股息",
+    "00939": "統一台灣高息動能", "00940": "元大台灣價值高息", "2330": "台積電", "2317": "鴻海", "2454": "聯發科",
+    "2412": "中華電", "2882": "國泰金", "2881": "富邦金", "2891": "中信金", "2308": "台達電", "2303": "聯電",
+    "1301": "台塑", "2603": "長榮", "2609": "陽明", "3711": "日月光投控", "2382": "廣達", "2357": "華碩", "2345": "智邦",
+    "2002": "中鋼", "1216": "統一", "2886": "兆豐金", "2884": "玉山金", "2892": "第一金", "2880": "華南金", "5880": "合庫金",
+    "3034": "聯詠", "3008": "大立光", "2327": "國巨", "2379": "瑞昱", "6505": "台塑化",
+}
+
+
+def twse_title_name(j: dict) -> str:
+    """證交所日成交資料的標題含中文名稱,例如「115年10月 00878 國泰永續高股息 各日成交資訊」。"""
+    m = re.search(r"\d+月\s+\S+\s+(.+?)\s+各日成交資訊", (j or {}).get("title", "") or "")
+    return m.group(1).strip() if m else ""
 
 
 def fetch_twse_recent(code: str, months: int = 2) -> list[dict]:
@@ -999,7 +1018,11 @@ def fetch_twse_recent(code: str, months: int = 2) -> list[dict]:
     for _ in range(months):
         r = http_get(TWSE_DAY_API, timeout=(6, 10),
                      params={"response": "json", "date": f"{y}{m:02d}01", "stockNo": code})
-        rows += parse_twse_day(r.json())
+        jj = r.json()
+        rows += parse_twse_day(jj)
+        nm = twse_title_name(jj)
+        if nm:
+            _twse_names[code] = nm
         m -= 1
         if m == 0:
             y, m = y - 1, 12
@@ -1065,7 +1088,7 @@ def fetch_yahoo(code: str, rng: str) -> dict | None:
 
 
 def build_stock(code: str, mis: dict | None, official: list[dict], yahoo: dict | None,
-                now: datetime | None = None) -> dict:
+                now: datetime | None = None, zh_name: str = "") -> dict:
     """合併多個來源。優先序:證交所即時 → 證交所日成交(收盤後以此為準) → Yahoo(僅備援)。"""
     now = now or tw_now()
     today = now.strftime("%Y/%m/%d")
@@ -1117,7 +1140,7 @@ def build_stock(code: str, mis: dict | None, official: list[dict], yahoo: dict |
             labels.append(date_s)
             values.append(price)
     return {
-        "code": code, "symbol": code, "name": (mis or {}).get("name") or (yahoo or {}).get("name") or "",
+        "code": code, "symbol": code, "name": (mis or {}).get("name") or zh_name or STOCK_ZH.get(code) or (yahoo or {}).get("name") or "",
         "price": price, "prev": prev, "high": hi, "low": lo, "volume": vol,
         "hi52": (yahoo or {}).get("hi52"), "lo52": (yahoo or {}).get("lo52"),
         "labels": labels, "values": values, "src": src, "asof": f"{date_s} {clock}".strip(),
@@ -1144,7 +1167,7 @@ def fetch_stock(code: str, rng: str = "3mo") -> dict:
         mis, official, yahoo = f_mis.result(), f_off.result() or [], f_yah.result()
     if not (mis or official or yahoo):
         raise RuntimeError(f"查無代號 {code}" + (f"({errs[0]})" if errs else ""))
-    return build_stock(code, mis, official, yahoo)
+    return build_stock(code, mis, official, yahoo, zh_name=_twse_names.get(code, ""))
 
 
 FX_CURRENCIES = [

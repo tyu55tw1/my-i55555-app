@@ -38,8 +38,10 @@ def search_pchome(kw, limit=40):
                 name, pid = p.get("Name") or p.get("name"), p.get("Id") or p.get("id")
                 price = to_price(p.get("Price") if p.get("Price") is not None else p.get("price"))
                 if name and pid and price:
+                    pic = p.get("PicS") or p.get("picS") or p.get("PicB") or p.get("picB") or ""
+                    img = ("https://img.pchome.com.tw/cs" + pic) if pic.startswith("/") else pic
                     out.append(dict(platform="PChome 24h", title=name, price=price, url=f"https://24h.pchome.com.tw/prod/{pid}",
-                                    credit="✅ 官方直營", sold=None))
+                                    credit="✅ 官方直營", sold=None, img=img))
             if out:
                 return out
         except Exception as e:  # noqa: BLE001
@@ -60,7 +62,8 @@ def search_momo(kw, limit=40):
     for g in (((r.json() or {}).get("rtnSearchData") or {}).get("goodsInfoList") or [])[:limit]:
         name, code, price = g.get("goodsName"), g.get("goodsCode"), to_price(g.get("goodsPrice"))
         if name and code and price:
-            out.append(dict(platform="momo 購物網", title=name, price=price,
+            img = g.get("imgUrl") or g.get("goodsImgUrl") or ""
+            out.append(dict(platform="momo 購物網", title=name, price=price, img=img if img.startswith("http") else "",
                             url=f"https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code={code}", credit="✅ momo 平台", sold=None))
     return out
 
@@ -89,8 +92,9 @@ def search_shopee(kw, limit=40, good_only=True):
             continue
         if b.get("name") and price and b.get("itemid"):
             credit = "🏅 蝦皮商城" if official else f"⭐ 評價 {stars:.1f}・已售 {sold}"
-            out.append(dict(platform="蝦皮購物", title=b["name"], price=price,
-                            url=f"https://shopee.tw/product/{b.get('shopid')}/{b['itemid']}", credit=credit, sold=sold))
+            out.append(dict(platform="蝦皮購物", title=b["name"], price=price, credit=credit, sold=sold,
+                            img=f"https://down-tw.img.susercontent.com/file/{b['image']}" if b.get("image") else "",
+                            url=f"https://shopee.tw/product/{b.get('shopid')}/{b['itemid']}"))
         if len(out) >= limit:
             break
     return out

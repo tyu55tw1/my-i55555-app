@@ -7,11 +7,17 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import pandas as pd
+import base64
 import html as _html
+import json
+import time
 
 import streamlit as st
 
 import core as K
+import shop as S
+import wheel as W
+from streamlit.components.v1 import html as components_html
 
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
@@ -29,6 +35,10 @@ div[data-testid=stVerticalBlockBorderWrapper]{border-radius:16px}
 .stButton>button,.stDownloadButton>button,.stLinkButton>a{border-radius:12px;font-weight:700;min-height:2.6rem}
 button[data-baseweb=tab]{font-weight:700}
 div[data-testid=stPills] button,div[data-testid=stPills] [role=button]{border-radius:999px!important;font-weight:700}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;margin:8px 0 14px}
+.pcard{display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:14px;background:var(--soft);border:1px solid var(--line);color:inherit!important;text-decoration:none!important}
+.pcard.best{border:2px solid var(--ac)}.pcard img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:10px;background:#fff}
+.pp{font-weight:800;font-size:1.15rem;color:var(--ac)}.pt{font-size:.82rem;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pb{font-size:.74rem;opacity:.7}
 .fcard{display:flex;gap:12px;background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 0 10px}
 .fcard img{width:84px;height:122px;object-fit:cover;border-radius:10px;flex:none}.fb{min-width:0;flex:1}
 .ft{font-weight:800;font-size:1.05rem;line-height:1.3}.ft a{color:inherit;text-decoration:none}.fm{opacity:.75;font-size:.85rem;margin:3px 0 4px}
@@ -46,7 +56,7 @@ div[data-testid=stPills] button{white-space:nowrap;flex:none}.block-container{pa
 .ball{width:31px;height:31px;font-size:.82rem;margin:2px}.chip{padding:3px 9px;font-size:.86rem}div[data-testid=stMetric]{padding:8px 11px}div[data-testid=stMetricValue]{font-size:1.35rem}.topbar small{display:none}}
 </style>""", unsafe_allow_html=True)
 
-PAGES = ["🎬 電影時刻", "⛅ 天氣", "⛽ 油價", "📈 股票", "💱 匯率", "🧾 發票對獎", "🎰 賓果", "🏆 樂透", "🤖 AI 下注顧問", "📸 大頭照", "🔧 連線診斷"]
+PAGES = ["🎬 電影時刻", "⛅ 天氣", "⛽ 油價", "📈 股票", "💱 匯率", "🧾 發票對獎", "🎰 賓果", "🏆 樂透", "🤖 AI 下注顧問", "📸 大頭照", "🛒 比價", "🎡 幸運轉盤", "🔧 連線診斷"]
 st.markdown("<div class='topbar'>🧰 全方位生活助手 <small>電影・天氣・油價・股票・匯率・發票・賓果・樂透</small></div>", unsafe_allow_html=True)
 _cur = st.session_state.get("pg", PAGES[0])
 if hasattr(st, "pills"):
@@ -119,6 +129,100 @@ invoices = st.cache_data(ttl=3600, show_spinner="取得財政部號碼…")(K.fe
 bingo_draws = st.cache_data(ttl=300, show_spinner="取得賓果開獎…")(K.fetch_bingo)
 
 
+
+@st.cache_resource
+def poster_store():
+    return {}
+
+
+_PH = "data:image/svg+xml;base64," + base64.b64encode(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='84' height='122'><rect width='100%' height='100%' rx='10' fill='#8884'/>"
+    "<text x='50%' y='56%' font-size='34' text-anchor='middle'>🎬</text></svg>".encode()).decode()
+
+
+def _img_uri(content, box):
+    im = K.Image.open(io.BytesIO(content)).convert("RGB")
+    im.thumbnail(box)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=78)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _try_img(sess, url, box, referer):
+    try:
+        r = K.http_get(url, session=sess, timeout=(4, 8), headers={"Referer": referer})
+        return _img_uri(r.content, box) if len(r.content) >= 500 else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _poster_from_page(sess, fid):
+    """標準海報網址都抓不到時(例如特殊片、重映片),讀電影介紹頁,取出官方海報網址。"""
+    try:
+        r = K.http_get(f"{K.BASE}/movie/{fid}/", session=sess, timeout=(4, 8), headers={"Referer": K.BASE + "/"})
+        soup = K.BeautifulSoup(r.text, "html.parser")
+        og = soup.find("meta", attrs={"property": "og:image"})
+        cands = [og.get("content")] if og and og.get("content") else []
+        for i in soup.find_all("img"):
+            src = i.get("src") or i.get("data-src") or ""
+            if fid in src or K.re.search(r"/photo\d*/", src):
+                cands.append(src)
+        return [K.urljoin(K.BASE, c) for c in cands if c]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _fetch_poster(sess, fid, url):
+    cands = []
+    if url:
+        cands.append(("https:" + url) if url.startswith("//") else url.replace("http://", "https://", 1))
+    for sz in ("pl", "pm"):
+        for ext in ("jpg", "png"):
+            cands.append(f"{K.BASE}/photo101/{fid}/{sz}_{fid}.{ext}")
+    for u in dict.fromkeys(cands):  # ① 頁面給的網址 → ② 標準海報網址
+        uri = _try_img(sess, u, (168, 244), K.BASE + "/")
+        if uri:
+            return uri
+    for u in dict.fromkeys(_poster_from_page(sess, fid)[:3]):  # ③ 讀電影介紹頁找海報
+        uri = _try_img(sess, u, (168, 244), K.BASE + "/")
+        if uri:
+            return uri
+    return _PH
+
+
+_PH_PROD = "data:image/svg+xml;base64," + base64.b64encode(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='100%' height='100%' fill='#8883'/>"
+    "<text x='50%' y='58%' font-size='64' text-anchor='middle'>🛍️</text></svg>".encode()).decode()
+
+
+def img_uris(urls, box=(240, 240)):
+    """商品圖:伺服器端抓取並內嵌(避免防盜連結),失敗 10 分鐘後重試。"""
+    store, now = poster_store(), time.time()
+    urls = [u for u in dict.fromkeys(urls) if u]
+    todo = [u for u in urls if u not in store or (not store[u][0] and now - store[u][1] > 600)]
+    if todo:
+        with ThreadPoolExecutor(8) as ex:
+            for u, uri in ex.map(lambda x: (x, _try_img(S._S, x, box, "https://www.google.com/")), todo):
+                store[u] = (uri, time.time())
+    return {u: store[u][0] or _PH_PROD for u in urls}
+
+
+def poster_uris(shows):
+    store, now = poster_store(), time.time()
+    todo = [(x.film_id, x.poster) for x in shows if x.film_id not in store or (store[x.film_id][0] == _PH and now - store[x.film_id][1] > 600)]
+    if todo:
+        sess = mclient().session
+        with ThreadPoolExecutor(8) as ex:
+            for fid, uri in ex.map(lambda t: (t[0], _fetch_poster(sess, *t)), todo):
+                store[fid] = (uri, time.time())
+    return {x.film_id: store[x.film_id][0] for x in shows}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def compare_cached(kw, plats, good):
+    return S.compare(kw, plats, good)
+
+
 def sessions_html(sessions, day):
     now, first, h = K.tw_now(), True, ""
     for s in sessions:
@@ -141,6 +245,46 @@ def card_html(title, url, meta, body, poster="", extra=""):
 def film_meta(rating, dur):
     name, col = K.RATINGS.get(rating, ("", "#444"))
     return (f"<span class='badge' style='background:{col}'>{name}</span>" if name else "") + (f"⏱ {dur} 分" if dur else "")
+
+
+
+def _wheels():
+    return st.session_state.setdefault("wheels", {k: list(v) for k, v in W.PRESETS.items()})
+
+
+def save_wheel():
+    ss = st.session_state
+    items = W.parse_lines(ss.get(f"wta_{ss.get('wheel_pick')}", ""))
+    name = (ss.get("wheel_new") or "").strip()[:20]
+    if name and items:
+        _wheels()[name] = items
+        ss["wheel_pick"] = name
+        ss["wheel_msg"] = f"✅ 已儲存「{name}」({len(items)} 個選項)"
+    else:
+        ss["wheel_msg"] = "⚠️ 請輸入轉盤名稱,並至少一個選項"
+
+
+def delete_wheel():
+    ss, w = st.session_state, _wheels()
+    if len(w) > 1:
+        w.pop(ss.get("wheel_pick"), None)
+        ss["wheel_pick"] = next(iter(w))
+        ss["wheel_msg"] = "🗑️ 已刪除"
+
+
+def import_wheels():
+    ss, f = st.session_state, st.session_state.get("wheel_up")
+    try:
+        data = json.loads(f.getvalue().decode("utf-8"))
+        n = 0
+        for name, items in data.items():
+            parsed = [(str(i[0]), float(i[1])) if isinstance(i, (list, tuple)) else (str(i), 1.0) for i in items][:60]
+            if parsed:
+                _wheels()[str(name)[:20]] = parsed
+                n += 1
+        ss["wheel_msg"] = f"✅ 已匯入 {n} 個轉盤"
+    except Exception as e:  # noqa: BLE001
+        ss["wheel_msg"] = f"⚠️ 匯入失敗:{type(e).__name__}"
 
 
 # ═════════ 各頁 ═════════
@@ -177,9 +321,11 @@ if page == PAGES[0]:
                     st.caption(f"共 {len(shows)} 部電影")
                     with st.expander("📋 解析到的電影清單(與官網不符時請參考)"):
                         st.write("、".join(f"{x.title}({sum(len(z.times) for z in x.sessions)}場)" for x in day.shows))
+                    with st.spinner("載入海報…"):
+                        uris = poster_uris(shows)
                     for sh in shows:
                         st.markdown(card_html(sh.title, sh.url, film_meta(sh.rating, sh.duration),
-                                              sessions_html(sh.sessions, day.key), sh.poster), unsafe_allow_html=True)
+                                              sessions_html(sh.sessions, day.key), uris[sh.film_id]), unsafe_allow_html=True)
         else:
             got = safe(scan, K.REGIONS[region])
             if got:
@@ -489,13 +635,99 @@ elif page == PAGES[9]:
         buf = io.BytesIO()
         out.save(buf, "PNG" if fmt == "PNG" else "JPEG", **({} if fmt == "PNG" else {"quality": 95}), dpi=(300, 300))
         st.download_button(f"💾 下載 {fmt}", buf.getvalue(), f"photo.{fmt.lower()}", f"image/{'png' if fmt == 'PNG' else 'jpeg'}", type="primary")
+elif page == PAGES[10]:
+    hero("🛒", "各大電商比價", "PChome・momo・蝦皮同時查詢;預設只顯示信用良好的賣家")
+    c1, c2 = st.columns([4, 1])
+    kw = c1.text_input("搜尋商品", placeholder="例如:iPhone 16、羅技滑鼠、洗衣精").strip()
+    c2.button("🔍 比價", type="primary")
+    with st.expander("⚙️ 進階篩選"):
+        a, b = st.columns(2)
+        plats = a.multiselect("比價平台", S.PLATFORMS, default=S.PLATFORMS)
+        good = b.checkbox("只顯示信用良好賣家(蝦皮商城/高評價)", True)
+        must = a.checkbox("標題須包含所有關鍵字(過濾不相關配件)", True)
+        sort = b.radio("排序", ["價格由低到高", "價格由高到低"], horizontal=True)
+        pmin = a.number_input("最低價", 0, 10_000_000, 0, step=100)
+        pmax = b.number_input("最高價(0 = 不限)", 0, 10_000_000, 0, step=100)
+    if kw and plats:
+        with st.spinner("同時查詢各平台…"):
+            items, status = compare_cached(kw, tuple(plats), good)
+        for col, (p, (n, err)) in zip(st.columns(len(status)), status.items()):
+            col.metric(p, f"{n} 筆" if not err else "無法查詢", None if not err else "⚠️ 見下方說明", delta_color="off")
+        for p, (n, err) in status.items():
+            if err:
+                st.caption(f"⚠️ {p}:{err[:110]}　→ 可改用下方「到各平台自己搜尋」")
+        res = S.refine(items, kw, must, pmin, pmax, "desc" if "高到低" in sort else "asc")
+        sm = S.summary(res)
+        if sm:
+            a, b, c, d = st.columns(4)
+            a.metric("💰 最低價", f"{sm['min']:,.0f}", sm["best"]["platform"], delta_color="off")
+            b.metric("平均價", f"{sm['avg']:,.0f}"); c.metric("中位數", f"{sm['median']:,.0f}"); d.metric("符合筆數", sm["n"])
+            st.success(f"最便宜:{sm['best']['platform']}・{sm['best']['title'][:48]}")
+            st.link_button("前往最低價商品 ↗", sm["best"]["url"])
+            top = res[:12]
+            with st.spinner("載入商品圖片…"):
+                uris = img_uris([i.get("img", "") for i in top])
+            st.markdown("<div class='pgrid'>" + "".join(
+                f"<a class='pcard{' best' if i is sm['best'] else ''}' href='{_esc(i['url'])}' target='_blank'>"
+                f"<img src='{uris.get(i.get('img', ''), _PH_PROD)}' loading='lazy'><span class='pp'>${i['price']:,.0f}</span>"
+                f"<span class='pt'>{_esc(i['title'])}</span><span class='pb'>{_esc(i['platform'])}・{_esc(i['credit'])}</span></a>"
+                for i in top) + "</div>", unsafe_allow_html=True)
+            with st.expander(f"📋 完整清單({len(res)} 筆)"):
+                st.dataframe(pd.DataFrame([(i["platform"], i["price"], i["credit"], i["title"], i["url"]) for i in res],
+                                          columns=["平台", "價格(NT$)", "信用", "商品名稱", "連結"]), hide_index=True,
+                             column_config={"連結": st.column_config.LinkColumn("商品連結", display_text="開啟 ↗"),
+                                            "價格(NT$)": st.column_config.NumberColumn(format="%d")})
+            by = {}
+            for i in res:
+                by[i["platform"]] = min(by.get(i["platform"], 1e12), i["price"])
+            st.bar_chart(pd.DataFrame({"各平台最低價": by}), color="#d9441a")
+        elif items:
+            st.info("有查到商品,但都被篩選條件排除了。可取消「標題須包含所有關鍵字」或放寬價格範圍。")
+        else:
+            st.warning("所有平台都沒有回應(可能被網站暫時擋下)。請稍後再試,或使用下方連結直接搜尋。")
+        st.markdown("##### 🔗 到各平台自己搜尋(已排序低價)")
+        links = S.search_links(kw)
+        names = list(links.items())
+        for row in (names[:3], names[3:]):
+            for col, (name, url) in zip(st.columns(3), row):
+                col.link_button(f"{name} ↗", url)
+    else:
+        st.info("輸入想買的商品名稱,就會同時比較各平台價格。" if not kw else "請至少選擇一個平台。")
+
+elif page == PAGES[11]:
+    hero("🎡", "幸運大轉盤", "選擇困難救星:可設權重、不重複抽、音效與抽籤紀錄")
+    wheels = _wheels()
+    if st.session_state.get("wheel_pick") not in wheels:
+        st.session_state["wheel_pick"] = next(iter(wheels))
+    c1, c2 = st.columns([3, 1])
+    name = c1.selectbox("選擇轉盤", list(wheels), key="wheel_pick")
+    c2.button("🗑️ 刪除此轉盤", on_click=delete_wheel, disabled=len(wheels) <= 1)
+    a, b = st.columns([3, 2])
+    text = a.text_area("轉盤選項(每行一個;行尾加 *數字 設權重,例:拉麵*3)", "\n".join(W.to_lines(wheels[name])), height=210, key=f"wta_{name}")
+    items = W.parse_lines(text)
+    b.text_input("另存為(轉盤名稱)", value=name, key="wheel_new")
+    b.button("💾 儲存轉盤", on_click=save_wheel, type="primary")
+    b.download_button("⬇️ 匯出全部轉盤", json.dumps({k: [list(i) for i in v] for k, v in wheels.items()}, ensure_ascii=False, indent=1).encode("utf-8"),
+                      "wheels.json", "application/json")
+    b.file_uploader("⬆️ 匯入轉盤(.json)", ["json"], key="wheel_up", on_change=import_wheels)
+    msg = st.session_state.pop("wheel_msg", "")
+    if msg:
+        st.info(msg)
+    if len(items) >= 2:
+        total = sum(w for _, w in items)
+        st.caption("目前機率:" + "　".join(f"{n} {w / total * 100:.0f}%" for n, w in items[:12]) + ("…" if len(items) > 12 else ""))
+    components_html(W.wheel_html(items), height=760, scrolling=True)
+    st.caption("💡 點轉盤或按空白鍵即可旋轉。轉盤存在目前這次使用中,要永久保存請按「匯出」,下次再「匯入」。")
+
 else:
     hero("🔧", "連線診斷", "確認伺服器能否連到各資料來源(部署後若某項失敗,可能是該網站擋海外 IP)")
     if st.button("開始測試", type="primary"):
         tests = {"電影(開眼)": lambda: f"{len(K.MovieClient().list_cinemas('a02', force=True))} 間戲院",
                  "天氣": lambda: K.fetch_weather("Taipei")["desc"], "油價": lambda: K.fetch_oil()["date"],
                  "股票(證交所/Yahoo)": lambda: K.fetch_stock("0050", "1mo")["src"], "匯率": lambda: f"{len(K.fetch_rates()['rates'])} 種",
-                 "發票(財政部)": lambda: K.fetch_invoice_periods()[0]["title"], "賓果(pilio)": lambda: f"{len(K.fetch_bingo())} 期"}
+                 "發票(財政部)": lambda: K.fetch_invoice_periods()[0]["title"], "賓果(pilio)": lambda: f"{len(K.fetch_bingo())} 期",
+                 "比價 PChome": lambda: f"{len(S.search_pchome('滑鼠'))} 筆", "比價 momo": lambda: f"{len(S.search_momo('滑鼠'))} 筆",
+                 "比價 蝦皮(常被擋)": lambda: f"{len(S.search_shopee('滑鼠'))} 筆"}
         for name, fn in tests.items():
             try:
                 st.success(f"✅ {name}:{fn()}")
