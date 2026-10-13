@@ -409,6 +409,16 @@ def tw_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=8)))
 
 
+def biz_date(now: datetime):
+    """戲院營業日:凌晨 0~5 點仍算前一天(網站也把午夜場列在前一天)。"""
+    return (now - timedelta(hours=6)).date()
+
+
+def biz_minutes(now: datetime) -> int:
+    """現在是營業日的第幾分鐘(凌晨 0~5 點 +24h,與場次時間同一刻度)。"""
+    return now.hour * 60 + now.minute + (1440 if now.hour < 6 else 0)
+
+
 def is_past(day_key: str, hhmm: str, now: datetime) -> bool:
     """場次是否已開演。凌晨 0~5 點的場次算在當天營業日的深夜(+24h)。"""
     try:
@@ -416,11 +426,12 @@ def is_past(day_key: str, hhmm: str, now: datetime) -> bool:
         day = datetime(y, mo, d).date()
     except ValueError:
         return False
-    if day != now.date():
-        return day < now.date()
+    today = biz_date(now)
+    if day != today:
+        return day < today
     h, m = (int(x) for x in hhmm.split(":"))
     mins = h * 60 + m + (1440 if h < 6 else 0)
-    return mins < now.hour * 60 + now.minute
+    return mins < biz_minutes(now)
 
 
 class MovieClient:

@@ -10,7 +10,6 @@ import pandas as pd
 import base64
 import html as _html
 import json
-import time
 
 import streamlit as st
 
@@ -44,6 +43,9 @@ div[data-testid=stPills] button,div[data-testid=stPills] [role=button]{border-ra
 .ft{font-weight:800;font-size:1.05rem;line-height:1.3}.ft a{color:inherit;text-decoration:none}.fm{opacity:.75;font-size:.85rem;margin:3px 0 4px}
 .lab{color:var(--ac);font-weight:800;font-size:.85rem;margin-top:6px}.tk{display:inline-block;margin-top:8px;color:var(--ac);font-weight:700;text-decoration:none}
 .chip{display:inline-block;padding:4px 12px;margin:3px 5px 3px 0;border-radius:10px;background:var(--soft);border:1px solid var(--line);color:inherit;font-weight:700;font-size:.92rem}
+.nrow{padding:7px 12px;margin:0 0 6px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}
+.nrow a{color:inherit;text-decoration:none}.nrow .fm{margin:2px 0 0}
+.nlab{display:inline-block;margin-left:8px;padding:0 8px;border-radius:7px;border:1px solid var(--ac);color:var(--ac);font-size:.76rem;font-weight:700}
 .chip.past{opacity:.38}.chip.next{background:var(--ac);border-color:var(--ac);color:#fff;opacity:1}
 .badge{display:inline-block;padding:1px 9px;border-radius:7px;color:#fff;font-size:.78rem;font-weight:700;margin-right:6px}
 .ball{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--ac);color:#fff;font-weight:700;margin:3px;box-shadow:0 2px 6px rgba(217,68,26,.35)}
@@ -121,6 +123,14 @@ def scan(code):
     return {k: v for k, v in res.items() if v}, [c.name for c in cs if not res.get(c.cid)]
 
 
+def refresh_movies():
+    """只清電影相關快取(含 MovieClient 內部 5 分鐘的網頁快取),不影響其他頁面與其他使用者的資料。"""
+    scan.clear(); schedule.clear(); cinemas.clear()
+    mc = mclient()
+    with mc._lock:
+        mc._cache.clear()
+
+
 weather = st.cache_data(ttl=600, show_spinner="取得氣象…")(K.fetch_weather)
 oil = st.cache_data(ttl=1800, show_spinner="取得牌價…")(K.fetch_oil)
 stock = st.cache_data(ttl=20, show_spinner="取得報價…")(K.fetch_stock)
@@ -133,6 +143,16 @@ bingo_draws = st.cache_data(ttl=300, show_spinner="取得賓果開獎…")(K.fet
 @st.cache_resource
 def poster_store():
     return {}
+
+
+_STORE_MAX = 600  # 海報+商品圖上限,超過就刪最舊的,避免伺服器記憶體一直長
+
+
+def _store_put(store, key, uri):
+    store[key] = (uri, time.time())
+    if len(store) > _STORE_MAX:
+        for k, _ in sorted(store.items(), key=lambda kv: kv[1][1])[:len(store) - _STORE_MAX]:
+            store.pop(k, None)
 
 
 _PH = "data:image/svg+xml;base64," + base64.b64encode(
@@ -202,9 +222,10 @@ def img_uris(urls, box=(240, 240)):
     todo = [u for u in urls if u not in store or (not store[u][0] and now - store[u][1] > 600)]
     if todo:
         with ThreadPoolExecutor(8) as ex:
-            for u, uri in ex.map(lambda x: (x, _try_img(S._S, x, box, "https://www.google.com/")), todo):
-                store[u] = (uri, time.time())
-    return {u: store[u][0] or _PH_PROD for u in urls}
+            got = dict(ex.map(lambda x: (x, _try_img(S._S, x, box, "https://www.google.com/")), todo))
+        for u, uri in got.items():
+            _store_put(store, u, uri)
+    return {u: (store[u][0] if u in store else got.get(u)) or _PH_PROD for u in urls}
 
 
 def poster_uris(shows):
@@ -213,9 +234,10 @@ def poster_uris(shows):
     if todo:
         sess = mclient().session
         with ThreadPoolExecutor(8) as ex:
-            for fid, uri in ex.map(lambda t: (t[0], _fetch_poster(sess, *t)), todo):
-                store[fid] = (uri, time.time())
-    return {x.film_id: store[x.film_id][0] for x in shows}
+            got = dict(ex.map(lambda t: (t[0], _fetch_poster(sess, *t)), todo))
+        for fid, uri in got.items():
+            _store_put(store, fid, uri)
+    return {x.film_id: store[x.film_id][0] if x.film_id in store else got.get(x.film_id, _PH) for x in shows}
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -223,15 +245,25 @@ def compare_cached(kw, plats, good):
     return S.compare(kw, plats, good)
 
 
+def _mins(t):
+    """場次分鐘數;凌晨 0~5 點算當天營業日的深夜(+24h)。"""
+    h, m = map(int, t.split(":"))
+    return h * 60 + m + (1440 if h < 6 else 0)
+
+
+def next_start(sessions, day, now):
+    """尚未開演的最早場次(分鐘數);全部演完回傳極大值。"""
+    return min((_mins(t) for s in sessions for t in s.times if not K.is_past(day, t, now)), default=10**6)
+
+
 def sessions_html(sessions, day):
-    now, first, h = K.tw_now(), True, ""
+    now, h = K.tw_now(), ""
+    nxt = next_start(sessions, day, now) if day == K.biz_date(now).strftime("%Y/%m/%d") else None
     for s in sessions:
         if s.label:
             h += f"<div class='lab'>{_esc(s.label)}</div>"
         for t in s.times:
-            past = K.is_past(day, t, now)
-            cls = "past" if past else ("next" if first and day == now.strftime("%Y/%m/%d") else "")
-            first = first and (past or cls == "")
+            cls = "past" if K.is_past(day, t, now) else ("next" if _mins(t) == nxt else "")
             h += f"<span class='chip {cls}'>{t}</span>"
     return h
 
@@ -290,17 +322,20 @@ def import_wheels():
 # ═════════ 各頁 ═════════
 if page == PAGES[0]:
     hero("🎬", "電影時刻", "全台戲院場次・已開演的場次變暗・橘色是下一場")
-    c1, c2, c3 = st.columns([2, 2, 1])
+    c1, c2, c3 = st.columns([2, 3, 1])
     region = c1.selectbox("地區", list(K.REGIONS))
-    mode = c2.radio("查詢方式", ["依戲院", "依電影"], horizontal=True)
+    mode = c2.radio("查詢方式", ["依戲院", "依電影", "⏰ 現在能看什麼"], horizontal=True)
     if c3.button("🔄 重新整理"):
-        st.cache_data.clear()
+        refresh_movies()
         st.rerun()
     flt = st.text_input("🔍 篩選", placeholder="輸入電影或戲院名稱").strip().casefold()
     cs = safe(cinemas, K.REGIONS[region])
     if cs:
         if mode == "依戲院":
-            pool = [x for x in cs if flt in x.name.casefold()] or cs
+            pool = [x for x in cs if flt in x.name.casefold()]
+            if flt and not pool:
+                st.caption(f"沒有戲院名稱含「{flt}」,改用片名篩選各戲院的場次")
+            pool = pool or cs
             st.caption(f"符合 {len(pool)} 間戲院")
             c = pool[st.selectbox("戲院", range(len(pool)), format_func=lambda i: pool[i].name)]
             b1, b2, b3 = st.columns(3)
@@ -316,39 +351,101 @@ if page == PAGES[0]:
                     st.info("這間戲院目前沒有場次資料(可能整修或網站尚未更新)")
                 else:
                     labels = {d.short: d for d in sch.days}
-                    day = labels[st.radio("日期", list(labels), horizontal=True)]
+                    day = labels[st.radio("日期", list(labels), horizontal=True, key="mv_day_c")]
                     shows = [s for s in day.shows if not flt or flt in s.title.casefold() or flt in c.name.casefold()]
-                    st.caption(f"共 {len(shows)} 部電影")
+                    now = K.tw_now()
+                    shows.sort(key=lambda s: (next_start(s.sessions, day.key, now), s.title))  # 最快開演的排前面
+                    live = [s for s in shows if next_start(s.sessions, day.key, now) < 10**6]
+                    done = shows[len(live):]
+                    st.caption(f"共 {len(shows)} 部電影・依下一場時間排序" + (f"・{len(done)} 部今天已演完" if done else ""))
+                    if not shows:
+                        st.info(f"這間戲院這天沒有符合「{flt}」的電影")
                     with st.expander("📋 解析到的電影清單(與官網不符時請參考)"):
                         st.write("、".join(f"{x.title}({sum(len(z.times) for z in x.sessions)}場)" for x in day.shows))
                     with st.spinner("載入海報…"):
                         uris = poster_uris(shows)
-                    for sh in shows:
+                    for sh in live:
                         st.markdown(card_html(sh.title, sh.url, film_meta(sh.rating, sh.duration),
                                               sessions_html(sh.sessions, day.key), uris[sh.film_id]), unsafe_allow_html=True)
+                    if done:
+                        with st.expander(f"🌙 今天已演完({len(done)} 部)"):
+                            for sh in done:
+                                st.markdown(card_html(sh.title, sh.url, film_meta(sh.rating, sh.duration),
+                                                      sessions_html(sh.sessions, day.key), uris[sh.film_id]), unsafe_allow_html=True)
         else:
             got = safe(scan, K.REGIONS[region])
             if got:
                 res, failed = got
                 if failed:
                     st.warning(f"有 {len(failed)} 間戲院這次沒抓到({'、'.join(failed[:5])}{'…' if len(failed) > 5 else ''}),部分電影可能沒有顯示。按上方「🔄 重新整理」可重試。")
-                idx = K.build_index({c.cid: res[c.cid] for c in cs if c.cid in res})
-                films = sorted(idx.values(), key=lambda f: (-len(f.by_cinema), f.title))
-                films = [f for f in films if flt in f.title.casefold()] or films
-                st.caption(f"符合 {len(films)} 部電影")
-                f = films[st.selectbox("電影", range(len(films)), format_func=lambda i: f"{films[i].title}({len(films[i].by_cinema)}間)")]
-                meta = " ・ ".join(x for x in (f"片長 {f.duration} 分" if f.duration else "", K.RATINGS.get(f.rating, ("",))[0]) if x)
-                st.subheader(f"🎞️ {f.title}")
-                st.caption(meta)
-                st.link_button("📄 電影介紹", f.url)
-                days = sorted({d for m in f.by_cinema.values() for d in m})
-                day = st.radio("日期", days, horizontal=True)
                 cmap = {c.cid: c for c in cs}
-                for cid, m in f.by_cinema.items():
-                    if day in m and cid in cmap:
-                        c = cmap[cid]
-                        tk = f"<a class='tk' href='{_esc(c.ticket)}' target='_blank'>🎟️ 線上訂票</a>" if c.ticket else ""
-                        st.markdown(card_html(c.name, c.url, _esc(c.address), sessions_html(m[day], day), extra=tk), unsafe_allow_html=True)
+                shorts = {d.key: d.short for s in res.values() for d in s.days}
+                now = K.tw_now()
+                if mode == "依電影":
+                    idx = K.build_index({c.cid: res[c.cid] for c in cs if c.cid in res})
+                    films = sorted(idx.values(), key=lambda f: (-len(f.by_cinema), f.title))
+                    hit = [f for f in films if flt in f.title.casefold()]
+                    if flt and not hit:
+                        st.caption(f"沒有片名含「{flt}」的電影,顯示全部")
+                    films = hit or films
+                    if not films:
+                        st.info("這個地區目前沒有場次資料")
+                    else:
+                        st.caption(f"符合 {len(films)} 部電影")
+                        f = films[st.selectbox("電影", range(len(films)), format_func=lambda i: f"{films[i].title}({len(films[i].by_cinema)}間)")]
+                        poster = poster_uris([f])[f.film_id]
+                        meta = film_meta(f.rating, f.duration)
+                        st.markdown(card_html(f"🎞️ {f.title}", f.url, meta, f"<a class='tk' href='{_esc(f.url)}' target='_blank'>📄 電影介紹</a>", poster), unsafe_allow_html=True)
+                        days = sorted({d for m in f.by_cinema.values() for d in m})
+                        day = st.radio("日期", days, horizontal=True, format_func=lambda k: shorts.get(k, k), key="mv_day_f") or days[0]
+                        rows = [(next_start(m[day], day, now), cmap[cid].name, cid) for cid, m in f.by_cinema.items() if day in m and cid in cmap]
+                        rows.sort()  # 最快能看到的戲院排前面,演完的排最後
+                        st.caption(f"{len(rows)} 間戲院有上映・依下一場時間排序")
+                        for _, _, cid in rows:
+                            c = cmap[cid]
+                            tk = f"<a class='tk' href='{_esc(c.ticket)}' target='_blank'>🎟️ 線上訂票</a>" if c.ticket else ""
+                            st.markdown(card_html(c.name, c.url, _esc(c.address), sessions_html(f.by_cinema[cid][day], day), extra=tk), unsafe_allow_html=True)
+                else:  # ⏰ 現在能看什麼
+                    a, b = st.columns([1, 2])
+                    hrs = a.select_slider("接下來幾小時", [1, 2, 3, 4, 6], 2)
+                    names = sorted(cmap[cid].name for cid in res if cid in cmap)
+                    pick = set(b.multiselect("只看這些戲院(不選 = 全部)", names))
+                    today, nowm = K.biz_date(now).strftime("%Y/%m/%d"), K.biz_minutes(now)
+                    items = []
+                    for cid, sch in res.items():
+                        c = cmap.get(cid)
+                        if not c or (pick and c.name not in pick):
+                            continue
+                        for d in sch.days:
+                            if d.key != today:
+                                continue
+                            for sh in d.shows:
+                                if flt and flt not in sh.title.casefold() and flt not in c.name.casefold():
+                                    continue
+                                for s in sh.sessions:
+                                    for t in s.times:
+                                        m = _mins(t)
+                                        if not K.is_past(today, t, now) and m - nowm <= hrs * 60:
+                                            items.append((m, t, sh, s.label, c))
+                    items.sort(key=lambda x: (x[0], x[2].title, x[4].name))
+                    if not items:
+                        st.info(f"接下來 {hrs} 小時沒有符合的場次")
+                    else:
+                        st.caption(f"接下來 {hrs} 小時共 {len(items)} 場・{len({x[2].film_id for x in items})} 部電影")
+                        h, last = "", None
+                        for m, t, sh, lab, c in items[:300]:
+                            if t != last:
+                                wait = m - nowm
+                                h += f"<div class='lab'>🕒 {t}　<small style='opacity:.7'>({'即將開演' if wait <= 0 else f'{wait} 分鐘後'})</small></div>"
+                                last = t
+                            end = f"・散場約 {(m + sh.duration) // 60 % 24:02d}:{(m + sh.duration) % 60:02d}" if sh.duration else ""
+                            tk = f" <a href='{_esc(c.ticket)}' target='_blank'>🎟️</a>" if c.ticket else ""
+                            h += (f"<div class='nrow'><a href='{_esc(sh.url)}' target='_blank'><b>{_esc(sh.title)}</b></a>"
+                                  f"{'<span class=nlab>' + _esc(lab) + '</span>' if lab else ''}"
+                                  f"<div class='fm'>{_esc(c.name)}{end}{tk}</div></div>")
+                        st.markdown(h, unsafe_allow_html=True)
+                        if len(items) > 300:
+                            st.caption("場次太多,只顯示前 300 場;可用上方篩選或指定戲院縮小範圍")
 elif page == PAGES[1]:
     hero("⛅", "天氣", "目前天氣・體感・紫外線・未來三天與穿衣建議")
     cities = {"台北": "Taipei", "新北": "New Taipei", "桃園": "Taoyuan", "台中": "Taichung", "台南": "Tainan",
@@ -414,7 +511,7 @@ elif page == PAGES[3]:
     else:
         stock_view()
         if st.button("🔄 重新整理"):
-            st.cache_data.clear()
+            stock.clear()
             st.rerun()
 elif page == PAGES[4]:
     hero("💱", "匯率", "多幣別即時換算")
@@ -451,7 +548,6 @@ elif page == PAGES[6]:
     hero("🎰", "賓果", "開獎統計・選號・回測・精確機率(統計無法預測下一期)")
     draws = safe(bingo_draws)
     t1, t2, t3 = st.tabs(["📊 統計與選號", "🧪 回測", "🧮 機率與期望值"])
-    stars = 3
     with t1:
         if draws:
             c1, c2, c3 = st.columns(3)
