@@ -4,36 +4,39 @@ import io
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import base64
-import html as _html
 import json
 
 import streamlit as st
 
 import core as K
+import life as L
 import shop as S
+import ui as U
+import views as V
 import wheel as W
 from streamlit.components.v1 import html as components_html
+from ui import _esc, hero, safe
 
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
-:root{--soft:rgba(128,128,128,.11);--line:rgba(128,128,128,.28);--ac:#d9441a}
-.block-container{padding:1.1rem 1.2rem 3.5rem;max-width:1100px}
-section[data-testid=stSidebar],[data-testid=stSidebarCollapsedControl],[data-testid=collapsedControl]{display:none}
-header[data-testid=stHeader]{background:transparent}footer{visibility:hidden}
-.topbar{display:flex;align-items:center;gap:10px;margin:0 0 4px;font-size:1.2rem;font-weight:800}
-.topbar small{font-weight:500;opacity:.55;font-size:.78rem}
-.hero{display:flex;align-items:center;gap:16px;background:linear-gradient(120deg,#ff6b3d,#ff9a5c 55%,#f5c542);padding:18px 24px;border-radius:22px;margin:10px 0 18px;color:#fff;box-shadow:0 10px 28px rgba(255,107,61,.28)}
-.hero h1{margin:0;font-size:1.65rem;color:#fff;padding:0}.hero p{margin:2px 0 0;opacity:.95;color:#fff}.hero .ico{font-size:2.6rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.25))}
+:root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
+.block-container{padding:4.6rem 1.2rem 3.5rem;max-width:1120px}
+footer{visibility:hidden}
+.hero{display:flex;align-items:center;gap:16px;background:linear-gradient(120deg,#ff6b3d,#ff9a5c 55%,#f5c542);padding:16px 22px;border-radius:22px;margin:4px 0 18px;color:#fff;box-shadow:0 10px 28px rgba(255,107,61,.22)}
+.hero h1{margin:0;font-size:1.55rem;color:#fff;padding:0}.hero p{margin:2px 0 0;opacity:.95;color:#fff}.hero .ico{font-size:2.4rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.25))}
 div[data-testid=stMetric]{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px 16px}
 div[data-testid=stMetricLabel] p{opacity:.72;font-size:.85rem}div[data-testid=stMetricValue]{font-weight:800}
 div[data-testid=stVerticalBlockBorderWrapper]{border-radius:16px}
 .stButton>button,.stDownloadButton>button,.stLinkButton>a{border-radius:12px;font-weight:700;min-height:2.6rem}
 button[data-baseweb=tab]{font-weight:700}
 div[data-testid=stPills] button,div[data-testid=stPills] [role=button]{border-radius:999px!important;font-weight:700}
+.st-key-prefs_bridge{display:none}
+@media(min-width:641px){[class*=st-key-geo_]{padding-top:1.75rem}.st-key-park_only{padding-top:2.2rem}}
+.up{color:var(--up);font-weight:700}.down{color:var(--down);font-weight:700}.flat{opacity:.7;font-weight:700}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;margin:8px 0 14px}
 .pcard{display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:14px;background:var(--soft);border:1px solid var(--line);color:inherit!important;text-decoration:none!important}
 .pcard.best{border:2px solid var(--ac)}.pcard img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:10px;background:#fff}
@@ -50,42 +53,41 @@ div[data-testid=stPills] button,div[data-testid=stPills] [role=button]{border-ra
 .badge{display:inline-block;padding:1px 9px;border-radius:7px;color:#fff;font-size:.78rem;font-weight:700;margin-right:6px}
 .ball{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--ac);color:#fff;font-weight:700;margin:3px;box-shadow:0 2px 6px rgba(217,68,26,.35)}
 .ball.z{background:#2f7de1;box-shadow:0 2px 6px rgba(47,125,225,.35)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin:4px 0 16px}
+.tile{display:flex;flex-direction:column;gap:2px;padding:14px 16px;border-radius:18px;background:var(--soft);border:1px solid var(--line);color:inherit!important;text-decoration:none!important;transition:transform .12s,border-color .12s;min-height:118px}
+@media(min-width:641px){.home .tile{min-height:168px}}
+.tile .tv.sm{font-size:1.25rem}
+.tile:hover{transform:translateY(-2px);border-color:var(--ac)}
+.tile .tl{font-size:.82rem;font-weight:700;opacity:.7}.tile .tv{font-size:1.65rem;font-weight:800;line-height:1.2}.tile .ts{font-size:.85rem;opacity:.8;line-height:1.45}
+.tile .row{display:flex;justify-content:space-between;gap:8px;font-size:.9rem;line-height:1.6}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:14px;margin:0 0 8px;border:1px solid var(--line);background:var(--soft)}
+.alert.red{border-color:#d63a3a;background:rgba(214,58,58,.10)}.alert.amber{border-color:#d6a400;background:rgba(214,164,0,.10)}
+.alert b{display:block}.alert small{display:block;opacity:.75;line-height:1.5}
+.dot{display:inline-grid;place-items:center;min-width:52px;height:52px;border-radius:50%;color:#fff;font-weight:800;font-size:1.15rem;flex:none}
+.card{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin:0 0 10px}
+.card .ct{font-weight:800;font-size:1.02rem}.card .cs{opacity:.75;font-size:.85rem;line-height:1.5}
+.card a{color:inherit}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:6px 0 2px}.bar>i{display:block;height:100%;border-radius:99px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.cal div{min-height:58px;padding:4px 6px;border-radius:10px;background:var(--soft);font-size:.8rem;line-height:1.25}
+.cal .h{background:none;min-height:0;text-align:center;font-weight:800;opacity:.7}.cal .off{background:rgba(229,72,77,.13);color:var(--up)}
+.cal .today{outline:2px solid var(--ac)}.cal .mk{background:rgba(47,125,225,.14)}.cal .e{background:none}.cal b{font-size:.95rem}
+.xfer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-radius:14px;background:var(--soft);border:1px solid var(--line);margin:0 0 8px;font-size:1.05rem}
+.xfer .amt{margin-left:auto;font-weight:800;color:var(--ac);font-size:1.15rem}
+.big{font-size:2.6rem;font-weight:800;line-height:1.1}
 @media(max-width:640px){.fcard{padding:10px;gap:10px}.fcard img{width:62px;height:90px}.ft{font-size:1rem}
 div[data-testid=stHorizontalBlock]{flex-wrap:wrap!important;gap:.5rem!important}
 div[data-testid=stColumn],div[data-testid=column]{min-width:calc(50% - .5rem)!important;flex:1 1 calc(50% - .5rem)!important}
 div[data-testid=stPills]>div,div[data-testid=stPills] [data-testid=stButtonGroup]{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
-div[data-testid=stPills] button{white-space:nowrap;flex:none}.block-container{padding:.7rem .65rem 3rem}.hero{padding:13px 15px;border-radius:18px;gap:11px}.hero .ico{font-size:2rem}.hero h1{font-size:1.2rem}.hero p{font-size:.8rem}
-.ball{width:31px;height:31px;font-size:.82rem;margin:2px}.chip{padding:3px 9px;font-size:.86rem}div[data-testid=stMetric]{padding:8px 11px}div[data-testid=stMetricValue]{font-size:1.35rem}.topbar small{display:none}}
+div[data-testid=stPills] button{white-space:nowrap;flex:none}.block-container{padding:4rem .65rem 3rem}.hero{padding:12px 15px;border-radius:18px;gap:11px;margin-bottom:12px}.hero .ico{font-size:2rem}.hero h1{font-size:1.2rem}.hero p{font-size:.8rem}
+.ball{width:31px;height:31px;font-size:.82rem;margin:2px}.chip{padding:3px 9px;font-size:.86rem}div[data-testid=stMetric]{padding:8px 11px}div[data-testid=stMetricValue]{font-size:1.35rem}
+.tile .nm{display:none}.tile .tv.sm{font-size:1.02rem}.tiles{grid-template-columns:1fr 1fr;gap:8px}.tile{padding:11px 12px;min-height:104px}.tile .tv{font-size:1.3rem}.cal div{min-height:46px;font-size:.7rem;padding:3px}.big{font-size:2rem}}
+@media(max-width:380px){.tiles{grid-template-columns:1fr}}
 </style>""", unsafe_allow_html=True)
-
-PAGES = ["🎬 電影時刻", "⛅ 天氣", "⛽ 油價", "📈 股票", "💱 匯率", "🧾 發票對獎", "🎰 賓果", "🏆 樂透", "🤖 AI 下注顧問", "📸 大頭照", "🛒 比價", "🎡 幸運轉盤", "🔧 連線診斷"]
-st.markdown("<div class='topbar'>🧰 全方位生活助手 <small>電影・天氣・油價・股票・匯率・發票・賓果・樂透</small></div>", unsafe_allow_html=True)
-_cur = st.session_state.get("pg", PAGES[0])
-if hasattr(st, "pills"):
-    page = st.pills("功能", PAGES, default=_cur, label_visibility="collapsed", key="nav_pills") or _cur
-else:
-    page = st.radio("功能", PAGES, index=PAGES.index(_cur), horizontal=True, label_visibility="collapsed")
-st.session_state["pg"] = page
-
-
-_esc = lambda x: _html.escape(str(x), quote=True).replace("$", "&#36;")
-
-
-def hero(icon, title, sub=""):
-    st.markdown(f"<div class='hero'><span class='ico'>{icon}</span><div><h1>{title}</h1><p>{sub}</p></div></div>", unsafe_allow_html=True)
 
 
 def balls(nums, z=None):
     h = "".join(f"<span class='ball'>{n:02d}</span>" for n in nums)
     return h + (f"<b> + </b><span class='ball z'>{z:02d}</span>" if z else "")
-
-
-def safe(fn, *a, **k):
-    try:
-        return fn(*a, **k)
-    except Exception as e:  # noqa: BLE001
-        st.error(f"連線失敗:{type(e).__name__}:{e}")
-        return None
 
 
 # ── 快取包裝(避免重複請求外部網站) ──
@@ -281,12 +283,16 @@ def film_meta(rating, dur):
 
 
 def _wheels():
-    return st.session_state.setdefault("wheels", {k: list(v) for k, v in W.PRESETS.items()})
+    """轉盤存在設定(瀏覽器 localStorage)裡,重新整理也不會不見。"""
+    P = U.prefs()
+    if not P.get("wheels"):
+        P["wheels"] = {k: [list(i) for i in v] for k, v in W.PRESETS.items()}
+    return P["wheels"]
 
 
 def save_wheel():
     ss = st.session_state
-    items = W.parse_lines(ss.get(f"wta_{ss.get('wheel_pick')}", ""))
+    items = W.parse_lines(ss.get(f"wta_{ss.get('wheel_pick')}_{U.rev()}", ""))
     name = (ss.get("wheel_new") or "").strip()[:20]
     if name and items:
         _wheels()[name] = items
@@ -320,10 +326,14 @@ def import_wheels():
 
 
 # ═════════ 各頁 ═════════
-if page == PAGES[0]:
+def page_movies():
     hero("🎬", "電影時刻", "全台戲院場次・已開演的場次變暗・橘色是下一場")
     c1, c2, c3 = st.columns([2, 3, 1])
-    region = c1.selectbox("地區", list(K.REGIONS))
+    regions = list(K.REGIONS)
+    r0 = U.pref("movie_region")
+    region = c1.selectbox("地區", regions, index=regions.index(r0) if r0 in regions else 0, key=f"mv_region_{U.rev()}")
+    U.remember("movie_region", region)
+    favs = list(U.pref("fav_cinemas", []))
     mode = c2.radio("查詢方式", ["依戲院", "依電影", "⏰ 現在能看什麼"], horizontal=True)
     if c3.button("🔄 重新整理"):
         refresh_movies()
@@ -335,9 +345,14 @@ if page == PAGES[0]:
             pool = [x for x in cs if flt in x.name.casefold()]
             if flt and not pool:
                 st.caption(f"沒有戲院名稱含「{flt}」,改用片名篩選各戲院的場次")
-            pool = pool or cs
-            st.caption(f"符合 {len(pool)} 間戲院")
-            c = pool[st.selectbox("戲院", range(len(pool)), format_func=lambda i: pool[i].name)]
+            pool = sorted(pool or cs, key=lambda x: x.name not in favs)  # 常去的戲院排最前面
+            st.caption(f"符合 {len(pool)} 間戲院" + ("・⭐ = 常去" if favs else ""))
+            c = pool[st.selectbox("戲院", range(len(pool)), format_func=lambda i: ("⭐ " if pool[i].name in favs else "") + pool[i].name)]
+            is_fav = c.name in favs
+            if st.button("★ 取消常去" if is_fav else "⭐ 設為常去戲院", key="fav_btn",
+                         help="常去的戲院會排在最前面,「現在能看什麼」也會預設只看它們"):
+                U.remember("fav_cinemas", [x for x in favs if x != c.name] if is_fav else favs + [c.name])
+                st.rerun()
             b1, b2, b3 = st.columns(3)
             if c.site:
                 b1.link_button("🌐 官方網站", c.site)
@@ -409,7 +424,7 @@ if page == PAGES[0]:
                     a, b = st.columns([1, 2])
                     hrs = a.select_slider("接下來幾小時", [1, 2, 3, 4, 6], 2)
                     names = sorted(cmap[cid].name for cid in res if cid in cmap)
-                    pick = set(b.multiselect("只看這些戲院(不選 = 全部)", names))
+                    pick = set(b.multiselect("只看這些戲院(不選 = 全部)", names, default=[n for n in names if n in favs], key=f"mv_pick_{region}_{U.rev()}"))
                     today, nowm = K.biz_date(now).strftime("%Y/%m/%d"), K.biz_minutes(now)
                     items = []
                     for cid, sch in res.items():
@@ -446,13 +461,31 @@ if page == PAGES[0]:
                         st.markdown(h, unsafe_allow_html=True)
                         if len(items) > 300:
                             st.caption("場次太多,只顯示前 300 場;可用上方篩選或指定戲院縮小範圍")
-elif page == PAGES[1]:
-    hero("⛅", "天氣", "目前天氣・體感・紫外線・未來三天與穿衣建議")
-    cities = {"台北": "Taipei", "新北": "New Taipei", "桃園": "Taoyuan", "台中": "Taichung", "台南": "Tainan",
-              "高雄": "Kaohsiung", "新竹": "Hsinchu", "花蓮": "Hualien", "其他城市": ""}
+
+
+CITIES = {"台北": "Taipei", "新北": "New Taipei", "桃園": "Taoyuan", "台中": "Taichung", "台南": "Tainan",
+          "高雄": "Kaohsiung", "新竹": "Hsinchu", "基隆": "Keelung", "宜蘭": "Yilan", "花蓮": "Hualien", "台東": "Taitung",
+          "嘉義": "Chiayi", "屏東": "Pingtung", "其他城市": ""}
+
+
+def page_weather():
+    hero("⛅", "天氣與空氣", "目前天氣・體感・紫外線・未來三天・空氣品質 AQI")
+    t1, t2 = st.tabs(["⛅ 天氣", "🌫️ 空氣品質"])
+    with t1:
+        weather_view()
+    with t2:
+        V.aqi_view()
+
+
+def weather_view():
+    cities = CITIES
     c1, c2 = st.columns([1, 2])
-    pick = c1.selectbox("快速選城市", list(cities))
-    q = c2.text_input("或輸入任何城市(英文名)", cities[pick] or "Tokyo").strip() or "Taipei"
+    p0 = U.pref("city", "台北")
+    pick = c1.selectbox("快速選城市", list(cities), index=list(cities).index(p0) if p0 in cities else 0, key=f"wx_city_{U.rev()}")
+    q = c2.text_input("或輸入任何城市(英文名)", cities[pick] or U.pref("city_q", "Tokyo"), key=f"wx_q_{pick}_{U.rev()}").strip() or "Taipei"
+    U.remember("city", pick)
+    if not cities[pick]:
+        U.remember("city_q", q)
     d = safe(weather, q)
     if d:
         place = pick if cities[pick] else K.AREA_ZH.get(q, d["area"] or q)  # 常用城市一律顯示中文名
@@ -469,7 +502,9 @@ elif page == PAGES[1]:
                 st.markdown(f"**{day['icon']} {day['label']}**")
                 st.metric("溫度", f"{day['lo']}° ~ {day['hi']}°", f"☔ {day['rain']}%", delta_color="off")
                 st.caption(day["desc"])
-elif page == PAGES[2]:
+
+
+def page_oil():
     hero("⛽", "油價", "台灣中油最新牌價與加油試算")
     d = safe(oil)
     if d:
@@ -479,15 +514,27 @@ elif page == PAGES[2]:
         lit = st.number_input("加油量(公升)", 1.0, 200.0, 30.0)
         st.success("  |  ".join(f"{n.split()[0]}:{lit * p:,.0f} 元" for n, p in zip(K.OIL_NAMES, d["prices"])))
 
-elif page == PAGES[3]:
-    hero("📈", "股票", "收盤價以臺灣證券交易所為準(即時+日成交),Yahoo 僅備援")
+
+
+def page_stock():
+    hero("📈", "股票", "自選股・個股走勢・除權息日曆(證交所資料,Yahoo 僅備援)")
+    t1, t2, t3 = st.tabs(["⭐ 自選股", "🔍 個股查詢", "📅 除權息"])
+    with t1:
+        V.watchlist_view()
+    with t2:
+        stock_detail()
+    with t3:
+        V.dividends_view()
+
+
+def stock_detail():
     quick = {"自行輸入": "", "0050 元大台灣50": "0050", "0056 元大高股息": "0056", "00878 國泰永續高股息": "00878",
              "2330 台積電": "2330", "2317 鴻海": "2317", "2454 聯發科": "2454"}
     c1, c2, c3 = st.columns([2, 1, 2])
     qk = c1.selectbox("常用", list(quick))
     code = c2.text_input("代號", quick[qk] or "0050").strip()
     rng = c3.radio("區間", list(K.STOCK_RANGES), horizontal=True, index=1)
-    auto = st.toggle("⏱️ 自動更新(30 秒)") if hasattr(st, "toggle") else False
+    auto = st.toggle("⏱️ 自動更新(30 秒)", key="stock_auto") if hasattr(st, "toggle") else False
 
     def stock_view():
         d = safe(stock, code, K.STOCK_RANGES[rng])
@@ -495,6 +542,11 @@ elif page == PAGES[3]:
             return
         diff = d["price"] - d["prev"]
         st.subheader(f"{d['code']}　{d['name']}")
+        watch = list(U.pref("watch", []))
+        if d["code"] not in watch and st.button("⭐ 加入自選股", key=f"add_watch_{d['code']}"):
+            U.remember("watch", watch + [d["code"]])
+            st.session_state["prefs_rev"] = U.rev() + 1
+            st.rerun()
         a, b, c, e = st.columns(4)
         a.metric("成交 / 收盤", f"{d['price']:,.2f}", f"{diff:+.2f} ({diff / d['prev'] * 100:+.2f}%)" if d["prev"] else None, delta_color="inverse")
         b.metric("今日高 / 低", f"{d['high'] or '--'} / {d['low'] or '--'}")
@@ -510,13 +562,27 @@ elif page == PAGES[3]:
         st.fragment(run_every=30)(stock_view)()
     else:
         stock_view()
-        if st.button("🔄 重新整理"):
+        if st.button("🔄 重新整理", key="stock_refresh"):
             stock.clear()
             st.rerun()
-elif page == PAGES[4]:
-    hero("💱", "匯率", "多幣別即時換算")
-    d = safe(rates)
+
+
+def page_fx():
+    hero("💱", "匯率", "銀行牌告(現鈔/即期,實際換匯價)・國際中間價多幣別換算")
+    d = U.quiet(rates)
+    t1, t2 = st.tabs(["🏦 銀行牌告(實際換匯)", "🌐 中間價換算"])
+    with t1:
+        V.bank_view(d["rates"] if d else None)
+    with t2:
+        if not d:
+            d = safe(rates)
+        if d:
+            fx_mid_view(d)
+
+
+def fx_mid_view(d):
     if d:
+        st.caption("國際中間價適合估算行情;實際到銀行換錢請看「銀行牌告」。")
         c1, c2 = st.columns(2)
         amt = c1.number_input("金額", 0.0, 1e12, 1000.0)
         base = c2.selectbox("幣別", [f"{c} {n}" for c, _, n in K.FX_CURRENCIES]).split()[0]
@@ -527,10 +593,17 @@ elif page == PAGES[4]:
             cols[i % 4].metric(f"{flag} {code} {name}", f"{v:,.0f}" if code in ("VND", "KRW") else f"{v:,.2f}",
                                f"1 {base} = {K.fx_convert(1, base, code, d['rates']):,.4f}", delta_color="off")
 
-elif page == PAGES[5]:
+
+
+def page_invoice():
     hero("🧾", "統一發票對獎", "自動取得財政部最新中獎號碼,免手動輸入")
     ps = safe(invoices)
-    if ps:
+    if not ps:
+        return
+    t1, t2 = st.tabs(["✍️ 輸入號碼", "📷 掃描 QR Code"])
+    with t2:
+        V.invoice_scan_view(ps)
+    with t1:
         p = ps[st.selectbox("期別", range(len(ps)), format_func=lambda i: ps[i]["title"])]
         st.caption(f"領獎期間 {p['claim_start']} ~ {p['claim_end']}" + ("  ⚠️ 已過期" if K.tw_now().date().isoformat() > p["claim_end"] else ""))
         a, b = st.columns(2)
@@ -544,7 +617,9 @@ elif page == PAGES[5]:
                 K.check_invoice(t, p["special"], p["grand"], p["first"], extra))) for t in toks]
             st.dataframe(pd.DataFrame(rows, columns=["號碼", "結果", "獎金", "說明"]), hide_index=True)
 
-elif page == PAGES[6]:
+
+
+def page_bingo():
     hero("🎰", "賓果", "開獎統計・選號・回測・精確機率(統計無法預測下一期)")
     draws = safe(bingo_draws)
     t1, t2, t3 = st.tabs(["📊 統計與選號", "🧪 回測", "🧮 機率與期望值"])
@@ -598,7 +673,9 @@ elif page == PAGES[6]:
             if u:
                 st.caption(f"🔬 隨機性檢定(最近 {len(draws)} 期):χ²={u[0]:.1f},p≈{u[1]:.2f} —— " + ("看不出任何號碼比較容易開出,熱門/冷門只是隨機波動。" if u[1] >= .05 else "p 值偏低,但同時檢驗 80 個號碼偶有低 p 值,對預測下一期仍無幫助。"))
     st.caption("⚠️ 每期開獎互相獨立,熱門/冷門/遺漏值都無法預測下一期,請理性遊玩。")
-elif page == PAGES[7]:
+
+
+def page_lotto():
     hero("🏆", "樂透選號", "大樂透・威力彩・今彩539 —— 精確機率與選號工具")
     t1, t2 = st.tabs(["🎲 產生號碼", "📊 機率與複式試算"])
     notes = {"anti": "不提高中獎機率,只避開生日號、連號、等差直線,中浮動獎金時較不易分獎。", "random": "每組號碼被開出的機率完全相同。", "structure": "和值/AC值/奇偶等只是民間說法,統計上沒有優勢。"}
@@ -640,7 +717,9 @@ elif page == PAGES[7]:
         a.metric("共幾注", f"{w['combos']:,}"); b.metric("花費", f"{w['cost']:,} 元"); c.metric("頭獎機率", f"1/{1 / w['p']:,.0f}")
         st.caption("複式只是一次買很多注:花費增加幾倍,機率就增加幾倍,每一塊錢的中獎機率完全沒有變好。")
     st.caption("⚠️ 每期開獎皆為獨立隨機事件,沒有任何選號方法能提高中獎機率,請理性購買。")
-elif page == PAGES[8]:
+
+
+def page_advisor():
     hero("🤖", "AI 下注顧問", "依預算算出最合理的方案、號碼與完整勝算(含賓果加倍)")
     c1, c2 = st.columns(2)
     bud = c1.select_slider("預算(元)", [100, 200, 300, 500, 1000, 2000, 5000, 10000], 500)
@@ -710,7 +789,9 @@ elif page == PAGES[8]:
         with st.expander("🛡️ 自我控管"):
             st.write("• 預算花完就停,不要「追損」加碼——前面輸了不會讓之後的機率變好。\n\n• 加倍會放大單期輸贏,請確認你能接受一次輸掉整個倍數。\n\n• 不要用生活費、借來的錢下注。\n\n• 沒有任何方案或「AI」能預測開獎;這裡提供的是精確機率與較合理的下注方式。")
     st.caption("⚠️ 開獎為獨立隨機事件,沒有任何方法能提高中獎機率,請只用輸掉也無妨的錢。")
-elif page == PAGES[9]:
+
+
+def page_photo():
     hero("📸", "大頭照", "自動轉正・置中裁切不變形・可輸出 4×6 吋整張排版")
     f = st.file_uploader("上傳照片(jpg / png / webp / bmp)", ["jpg", "jpeg", "png", "webp", "bmp"])
     if f:
@@ -731,7 +812,9 @@ elif page == PAGES[9]:
         buf = io.BytesIO()
         out.save(buf, "PNG" if fmt == "PNG" else "JPEG", **({} if fmt == "PNG" else {"quality": 95}), dpi=(300, 300))
         st.download_button(f"💾 下載 {fmt}", buf.getvalue(), f"photo.{fmt.lower()}", f"image/{'png' if fmt == 'PNG' else 'jpeg'}", type="primary")
-elif page == PAGES[10]:
+
+
+def page_shop():
     hero("🛒", "各大電商比價", "PChome・momo・蝦皮同時查詢;預設只顯示信用良好的賣家")
     c1, c2 = st.columns([4, 1])
     kw = c1.text_input("搜尋商品", placeholder="例如:iPhone 16、羅技滑鼠、洗衣精").strip()
@@ -790,7 +873,9 @@ elif page == PAGES[10]:
     else:
         st.info("輸入想買的商品名稱,就會同時比較各平台價格。" if not kw else "請至少選擇一個平台。")
 
-elif page == PAGES[11]:
+
+
+def page_wheel():
     hero("🎡", "幸運大轉盤", "選擇困難救星:可設權重、不重複抽、音效與抽籤紀錄")
     wheels = _wheels()
     if st.session_state.get("wheel_pick") not in wheels:
@@ -799,7 +884,7 @@ elif page == PAGES[11]:
     name = c1.selectbox("選擇轉盤", list(wheels), key="wheel_pick")
     c2.button("🗑️ 刪除此轉盤", on_click=delete_wheel, disabled=len(wheels) <= 1)
     a, b = st.columns([3, 2])
-    text = a.text_area("轉盤選項(每行一個;行尾加 *數字 設權重,例:拉麵*3)", "\n".join(W.to_lines(wheels[name])), height=210, key=f"wta_{name}")
+    text = a.text_area("轉盤選項(每行一個;行尾加 *數字 設權重,例:拉麵*3)", "\n".join(W.to_lines(wheels[name])), height=210, key=f"wta_{name}_{U.rev()}")
     items = W.parse_lines(text)
     b.text_input("另存為(轉盤名稱)", value=name, key="wheel_new")
     b.button("💾 儲存轉盤", on_click=save_wheel, type="primary")
@@ -813,22 +898,183 @@ elif page == PAGES[11]:
         total = sum(w for _, w in items)
         st.caption("目前機率:" + "　".join(f"{n} {w / total * 100:.0f}%" for n, w in items[:12]) + ("…" if len(items) > 12 else ""))
     components_html(W.wheel_html(items), height=760, scrolling=True)
-    st.caption("💡 點轉盤或按空白鍵即可旋轉。轉盤存在目前這次使用中,要永久保存請按「匯出」,下次再「匯入」。")
+    st.caption("💡 點轉盤或按空白鍵即可旋轉。按「儲存轉盤」後會自動存在這台裝置的瀏覽器裡;換裝置時可用「匯出 / 匯入」。")
 
-else:
-    hero("🔧", "連線診斷", "確認伺服器能否連到各資料來源(部署後若某項失敗,可能是該網站擋海外 IP)")
-    if st.button("開始測試", type="primary"):
-        tests = {"電影(開眼)": lambda: f"{len(K.MovieClient().list_cinemas('a02', force=True))} 間戲院",
-                 "天氣": lambda: K.fetch_weather("Taipei")["desc"], "油價": lambda: K.fetch_oil()["date"],
-                 "股票(證交所/Yahoo)": lambda: K.fetch_stock("0050", "1mo")["src"], "匯率": lambda: f"{len(K.fetch_rates()['rates'])} 種",
-                 "發票(財政部)": lambda: K.fetch_invoice_periods()[0]["title"], "賓果(pilio)": lambda: f"{len(K.fetch_bingo())} 期",
-                 "比價 PChome": lambda: f"{len(S.search_pchome('滑鼠'))} 筆", "比價 momo": lambda: f"{len(S.search_momo('滑鼠'))} 筆",
-                 "比價 蝦皮(常被擋)": lambda: f"{len(S.search_shopee('滑鼠'))} 筆"}
-        for name, fn in tests.items():
-            try:
-                st.success(f"✅ {name}:{fn()}")
-            except Exception as e:  # noqa: BLE001
-                st.error(f"❌ {name}:{type(e).__name__}: {e}")
+
+# ═════════ 首頁 ═════════
+def _next_invoice_draw(today):
+    """統一發票每逢單數月 25 日開出前兩個月的號碼。回傳 (開獎日, 期別文字)。"""
+    y, m = today.year, today.month
+    if m % 2 == 0 or today.day > 25:
+        m += 1 if m % 2 == 0 else 2
+        if m > 12:
+            y, m = y + 1, m - 12
+    d = datetime(y, m, 25).date()
+    end_m, end_y = (m - 1, y) if m > 1 else (12, y - 1)
+    return d, f"{end_y - 1911}年 {end_m - 1:02d}-{end_m:02d}月"
+
+
+def _tile(label, value, sub="", rows=None, value_style="", small=False):
+    r = "".join(f"<div class='row'><span>{a}</span><span>{b}</span></div>" for a, b in rows or [])
+    v = f"<span class='tv{' sm' if small else ''}' style='{value_style}'>{value}</span>" if value else ""
+    return f"<div class='tile'><span class='tl'>{label}</span>{v}{r}<span class='ts'>{sub}</span></div>"
+
+
+def _eq_recent(e, now, hours=12):
+    try:
+        t = datetime.strptime(f"{now.year}/{e['time']}", "%Y/%m/%d %H:%M").replace(tzinfo=now.tzinfo)
+    except (ValueError, KeyError):
+        return False
+    return timedelta(0) <= now - t <= timedelta(hours=hours)
+
+
+def page_home():
+    now = K.tw_now()
+    today = now.date()
+    h_ = now.hour
+    greet = "夜深了,早點休息 🌙" if h_ < 5 else "早安 ☀️" if h_ < 11 else "午安 🍱" if h_ < 14 else "下午好 ☕" if h_ < 18 else "晚安 🌙"
+    city = U.pref("city", "台北")
+    q = CITIES.get(city) or U.pref("city_q", "Taipei") or "Taipei"
+    watch = list(U.pref("watch", ["0050", "2330", "00878"]))[:6]
+    with st.spinner("整理今天的資訊…"):
+        got = U.parallel(timeout=8, w=lambda: weather(q), aq=V.aqi, wn=V.cwa_warnings, cl=V.closures, eq=V.earthquakes,
+                         bank=V.bank_rates, oil=oil, qs=lambda: V.quotes(tuple(watch)), inv=invoices, cal=V.holidays_all)
+    cal = got["cal"] or []
+    lw = [x for x in L.long_weekends(cal) if x["end"] >= today] if cal else []
+    if lw:
+        n = (lw[0]["start"] - today).days
+        hol = f"🎉 正在放「{lw[0]['name']}」連假" if n <= 0 else f"距離「{lw[0]['name']}」連假還有 {n} 天"
+    else:
+        hol = ""
+    hero("🧰", greet, f"{today:%Y/%m/%d}({V.WD[today.weekday()]})・民國 {today.year - 1911} 年" + (f"・{hol}" if hol else ""))
+
+    # ── 防災提醒 ──
+    alerts = []
+    if got["cl"] and got["cl"][0]:
+        alerts += [("red", "🏫", f"{c}:{s}") for c, s in got["cl"][0][:4]]
+    for w in (got["wn"] or [])[:3]:
+        alerts.append(("red" if "颱風警報" in w["title"] or "豪雨" in w["title"] else "amber", V.warn_icon(w["title"]),
+                       f"{w['title']}(至 {w['validto'][5:] if w['validto'] else '—'})"))
+    for e in (got["eq"] or [])[:3]:
+        if (e["intensity"] or 0) >= 3 and _eq_recent(e, now):
+            alerts.append(("amber", "🌏", f"{e['time']} {e['where']} 規模 {e['mag']},最大震度 {e['intensity']} 級"))
+    if alerts:
+        st.markdown("".join(f"<div class='alert {c}'><span>{i}</span><div><b>{_esc(t)}</b></div></div>" for c, i, t in alerts),
+                    unsafe_allow_html=True)
+        st.page_link(PAGES["alerts"], label="查看防災資訊 →")
+    elif got["cl"] is not None or got["wn"] is not None:
+        st.caption("✅ 目前沒有停班停課與天氣警特報")
+
+    # ── 資訊卡 ──
+    tiles = []
+    d = got["w"]
+    if d:
+        tiles.append(("weather", _tile(f"⛅ {city if CITIES.get(city) else q} 天氣", f"{d['icon']} {d['temp']}°C",
+                                       f"{d['desc']}・體感 {d['feel']}°・降雨 {d['rain']}%")))
+    else:
+        tiles.append(("weather", _tile("⛅ 天氣", "—", "暫時無法取得")))
+    aq = got["aq"]
+    county = U.pref("aqi_county", "臺北市")
+    sites = [x for x in aq or [] if x["county"] == county and x["aqi"] is not None]
+    if sites:
+        avg = sum(x["aqi"] for x in sites) / len(sites)
+        name, col, _ = L.aqi_level(avg)
+        tiles.append(("weather", _tile(f"🌫️ {county} 空氣", f"AQI {avg:.0f}", f"{name}・{len(sites)} 個測站平均", value_style=f"color:{col}")))
+    else:
+        tiles.append(("weather", _tile("🌫️ 空氣品質", "—", "暫時無法取得")))
+    if cal:
+        named = [x for x in cal if x["off"] and x["desc"] and x["date"] >= today]
+        if named:
+            nd = (named[0]["date"] - today).days
+            tiles.append(("holidays", _tile("📅 下一個國定假日", named[0]["desc"],
+                                            f"{named[0]['date'].month}/{named[0]['date'].day}({V.WD[named[0]['date'].weekday()]})・"
+                                            + ("就是今天 🎉" if nd == 0 else f"還有 {nd} 天"), small=True)))
+    qs = got["qs"] or {}
+    if watch:
+        rows = []
+        for c in watch[:5]:
+            x = qs.get(c)
+            if x and x["price"] and x["prev"]:
+                diff = x["price"] - x["prev"]
+                cls = "up" if diff > 0 else "down" if diff < 0 else "flat"
+                rows.append((f"{c} <span class='nm'>{_esc(x['name'][:4])}</span>", f"{x['price']:,.2f} <span class='{cls}'>{diff / x['prev'] * 100:+.2f}%</span>"))
+        tiles.append(("stock", _tile("⭐ 自選股", "", "漲紅跌綠" if rows else "暫時無法取得報價", rows)))
+    b = got["bank"]
+    if b:
+        cur = U.pref("fx_cur", "USD")
+        show = list(dict.fromkeys([c for c in (cur, "USD", "JPY", "EUR") if c in b["rates"]]))[:3]
+        rows = [(V.fx_label(c).rsplit(" ", 1)[0], f"{(b['rates'][c].get('cash') or b['rates'][c]['spot'])[1]:g}") for c in show]
+        tiles.append(("fx", _tile("💱 換外幣(現鈔賣出)", "", f"{b['bank']}牌告", rows)))
+    o = got["oil"]
+    if o:
+        rows = []
+        for n_, p_, pv in zip(K.OIL_NAMES, o["prices"], o["prev"] or [None] * 4):
+            ch = f" <span class='{'up' if p_ > pv else 'down'}'>{p_ - pv:+.1f}</span>" if pv and abs(p_ - pv) >= 0.05 else ""
+            rows.append((n_.replace(" 無鉛汽油", "").replace("超級", ""), f"{p_:.1f}{ch}"))
+        tiles.append(("oil", _tile("⛽ 中油油價", "", f"牌價日期 {o['date']}", rows)))
+    dd, period = _next_invoice_draw(today)
+    inv = got["inv"]
+    latest = inv[0]["title"] if inv else ""
+    tiles.append(("invoice", _tile("🧾 統一發票", f"{dd.month}/{dd.day} 開獎", f"{period}" + (f"<br>最新已開:{_esc(latest)}" if latest else ""),
+                                   small=True)))
+    favs = U.pref("fav_cinemas", [])
+    tiles.append(("movies", _tile("🎬 電影", "現在能看什麼?", f"常去戲院 {len(favs)} 間" if favs else "可在電影頁設定常去戲院",
+                                  small=True)))
+    link_text = {"weather": "天氣・空氣 →", "holidays": "假日行事曆 →", "stock": "股票 →", "fx": "匯率 →", "oil": "油價 →",
+                 "invoice": "發票對獎 →", "movies": "電影時刻 →"}
+    for i in range(0, len(tiles), 4):
+        for col, (pg, html) in zip(st.columns(4), tiles[i:i + 4]):
+            with col:
+                st.markdown("<div class='home'>" + html.replace("class='tile'", "class='tile' style='margin-bottom:4px'") + "</div>", unsafe_allow_html=True)
+                st.page_link(PAGES[pg], label=link_text[pg])
+
+    st.markdown("##### 🧰 小工具")
+    tools = [("split", "聚餐分帳"), ("tools", "換算・計時"), ("parking", "找停車位"), ("wheel", "幸運轉盤"), ("shop", "比價"), ("photo", "大頭照")]
+    for col, (k, lab) in zip(st.columns(6), tools):
+        with col:
+            st.page_link(PAGES[k], label=lab)
+
+
+def page_settings():
+    V.page_settings({
+        "電影(開眼)": lambda: f"{len(K.MovieClient().list_cinemas('a02', force=True))} 間戲院",
+        "天氣": lambda: K.fetch_weather("Taipei")["desc"], "油價": lambda: K.fetch_oil()["date"],
+        "股票(證交所/Yahoo)": lambda: K.fetch_stock("0050", "1mo")["src"], "匯率(中間價)": lambda: f"{len(K.fetch_rates()['rates'])} 種",
+        "發票(財政部)": lambda: K.fetch_invoice_periods()[0]["title"], "賓果(pilio)": lambda: f"{len(K.fetch_bingo())} 期",
+        "比價 PChome": lambda: f"{len(S.search_pchome('滑鼠'))} 筆", "比價 momo": lambda: f"{len(S.search_momo('滑鼠'))} 筆",
+        "比價 蝦皮(常被擋)": lambda: f"{len(S.search_shopee('滑鼠'))} 筆"})
+
+
+# ═════════ 導覽 ═════════
+PAGES = {
+    "home": st.Page(page_home, title="首頁", icon="🏠", default=True),
+    "weather": st.Page(page_weather, title="天氣・空氣", icon="⛅", url_path="weather"),
+    "alerts": st.Page(V.page_alerts, title="防災資訊", icon="⚠️", url_path="alerts"),
+    "holidays": st.Page(V.page_holidays, title="假日行事曆", icon="📅", url_path="holidays"),
+    "parking": st.Page(V.page_parking, title="停車", icon="🅿️", url_path="parking"),
+    "stock": st.Page(page_stock, title="股票", icon="📈", url_path="stock"),
+    "fx": st.Page(page_fx, title="匯率", icon="💱", url_path="fx"),
+    "oil": st.Page(page_oil, title="油價", icon="⛽", url_path="oil"),
+    "invoice": st.Page(page_invoice, title="發票對獎", icon="🧾", url_path="invoice"),
+    "shop": st.Page(page_shop, title="比價", icon="🛒", url_path="shop"),
+    "movies": st.Page(page_movies, title="電影時刻", icon="🎬", url_path="movies"),
+    "wheel": st.Page(page_wheel, title="幸運轉盤", icon="🎡", url_path="wheel"),
+    "bingo": st.Page(page_bingo, title="賓果", icon="🎰", url_path="bingo"),
+    "lotto": st.Page(page_lotto, title="樂透", icon="🏆", url_path="lotto"),
+    "advisor": st.Page(page_advisor, title="AI 下注顧問", icon="🤖", url_path="advisor"),
+    "split": st.Page(V.page_split, title="聚餐分帳", icon="🍱", url_path="split"),
+    "tools": st.Page(V.page_tools, title="換算・BMI・計時", icon="📐", url_path="tools"),
+    "photo": st.Page(page_photo, title="大頭照", icon="📸", url_path="photo"),
+    "settings": st.Page(page_settings, title="設定與診斷", icon="⚙️", url_path="settings"),
+}
+_G = lambda *ks: [PAGES[k] for k in ks]  # noqa: E731
+nav = st.navigation({"": _G("home"), "生活": _G("weather", "alerts", "holidays", "parking"),
+                     "理財": _G("stock", "fx", "oil", "invoice", "shop"),
+                     "娛樂": _G("movies", "wheel", "bingo", "lotto", "advisor"),
+                     "工具": _G("split", "tools", "photo", "settings")}, position="top")
+nav.run()
 
 st.divider()
-st.caption("資料來源:開眼電影網・wttr.in・台灣中油・證交所・財政部・pilio・exchangerate-api　|　彩券相關內容僅供參考,請理性購買")
+st.caption("資料來源:開眼電影網・wttr.in・中央氣象署・環境部・人事行政總處・臺北市交通局・台灣中油・證交所・櫃買中心・財政部・"
+           "第一銀行・pilio・exchangerate-api　|　設定只存在你的瀏覽器　|　彩券相關內容僅供參考,請理性購買")
+U.prefs_sync()
