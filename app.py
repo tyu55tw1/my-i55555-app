@@ -35,6 +35,25 @@ div[data-testid=stVerticalBlockBorderWrapper]{border-radius:16px}
 button[data-baseweb=tab]{font-weight:700}
 div[data-testid=stPills] button,div[data-testid=stPills] [role=button]{border-radius:999px!important;font-weight:700}
 .st-key-prefs_bridge{display:none}
+[class*=st-key-tile_]{position:relative;margin-bottom:.7rem}
+[class*=st-key-tile_] [data-testid=stMarkdownContainer],[class*=st-key-tile_] .stMarkdown{margin-bottom:0!important}
+[class*=st-key-tile_] .tile{margin-bottom:0!important;height:100%}
+[class*=st-key-tile_] [data-testid=stElementContainer]:has([data-testid=stPageLink]){position:absolute!important;inset:0;z-index:5;margin:0;width:100%!important;height:100%!important}
+[class*=st-key-tile_] [data-testid=stPageLink],[class*=st-key-tile_] [data-testid=stPageLink]>div,[class*=st-key-tile_] [data-testid=stPageLink] a{display:block!important;width:100%!important;max-width:none!important;height:100%!important;opacity:0;margin:0!important;padding:0!important}
+[class*=st-key-tile_]:hover .tile{transform:translateY(-2px);border-color:var(--ac);box-shadow:0 6px 18px rgba(0,0,0,.08)}
+.tile .more{margin-top:auto;padding-top:6px;font-size:.8rem;font-weight:700;color:var(--ac)}
+.st-key-home_btn{margin-bottom:-.4rem}
+.st-key-home_btn a{display:inline-flex!important;width:auto!important;border:1px solid var(--line);border-radius:999px;padding:.1rem .8rem!important;background:var(--soft)}
+.st-key-home_btn a:hover{border-color:var(--ac)}
+.pbadge{display:inline-block;align-self:flex-start;padding:1px 8px;border-radius:7px;color:#fff;font-size:.72rem;font-weight:800}
+.orig{margin-left:6px;font-size:.8rem;opacity:.55;text-decoration:line-through}.disc{margin-left:4px;padding:0 5px;border-radius:6px;background:var(--up);color:#fff;font-size:.72rem;font-weight:800}
+.tag{display:inline-block;align-self:flex-start;padding:1px 7px;border-radius:7px;font-size:.72rem;font-weight:700}.tag.best{background:var(--ac);color:#fff}.tag.warn{background:rgba(214,164,0,.18);color:#b07d00}
+.bestcard{display:flex;gap:16px;align-items:center;padding:14px;border-radius:18px;border:2px solid var(--ac);background:var(--soft);margin:6px 0 12px}
+.bestcard img{width:130px;height:130px;object-fit:contain;border-radius:12px;background:#fff;flex:none}.bestcard .bb{min-width:0;flex:1}
+.bestcard .ct{font-weight:800;line-height:1.35;margin:2px 0}.bestcard .cs{opacity:.8;font-size:.86rem}
+.bestcard .go{display:inline-block;margin-top:8px;padding:.35rem 1rem;border-radius:10px;background:var(--ac);color:#fff!important;font-weight:800;text-decoration:none}
+.grow{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid var(--line);color:inherit!important;text-decoration:none!important}
+.grow:hover{background:var(--soft)}.grow .gt{flex:1;min-width:0;font-size:.85rem;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.grow .gp{font-weight:800;white-space:nowrap}
 @media(min-width:641px){[class*=st-key-geo_]{padding-top:1.75rem}.st-key-park_only{padding-top:2.2rem}}
 .up{color:var(--up);font-weight:700}.down{color:var(--down);font-weight:700}.flat{opacity:.7;font-weight:700}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;margin:8px 0 14px}
@@ -80,8 +99,9 @@ div[data-testid=stColumn],div[data-testid=column]{min-width:calc(50% - .5rem)!im
 div[data-testid=stPills]>div,div[data-testid=stPills] [data-testid=stButtonGroup]{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
 div[data-testid=stPills] button{white-space:nowrap;flex:none}.block-container{padding:4rem .65rem 3rem}.hero{padding:12px 15px;border-radius:18px;gap:11px;margin-bottom:12px}.hero .ico{font-size:2rem}.hero h1{font-size:1.2rem}.hero p{font-size:.8rem}
 .ball{width:31px;height:31px;font-size:.82rem;margin:2px}.chip{padding:3px 9px;font-size:.86rem}div[data-testid=stMetric]{padding:8px 11px}div[data-testid=stMetricValue]{font-size:1.35rem}
-.tile .nm{display:none}.tile .tv.sm{font-size:1.02rem}.tiles{grid-template-columns:1fr 1fr;gap:8px}.tile{padding:11px 12px;min-height:104px}.tile .tv{font-size:1.3rem}.cal div{min-height:46px;font-size:.7rem;padding:3px}.big{font-size:2rem}}
-@media(max-width:380px){.tiles{grid-template-columns:1fr}}
+.tile .nm{display:none}.tile .tv.sm{font-size:1.02rem}.bestcard img{width:86px;height:86px}.bestcard{gap:10px;padding:10px}.tiles{grid-template-columns:1fr 1fr;gap:8px}.tile{padding:11px 12px;min-height:104px}.tile .tv{font-size:1.3rem}.cal div{min-height:46px;font-size:.7rem;padding:3px}.big{font-size:2rem}}
+@media(max-width:330px){.tiles{grid-template-columns:1fr}}
+@media(max-width:640px){.st-key-shop_search [data-testid=stColumn]:first-child{min-width:66%!important;flex:3 1 66%!important}.st-key-shop_search [data-testid=stColumn]:last-child{min-width:28%!important;flex:1 1 28%!important}}
 </style>""", unsafe_allow_html=True)
 
 
@@ -814,65 +834,236 @@ def page_photo():
         st.download_button(f"💾 下載 {fmt}", buf.getvalue(), f"photo.{fmt.lower()}", f"image/{'png' if fmt == 'PNG' else 'jpeg'}", type="primary")
 
 
-def page_shop():
-    hero("🛒", "各大電商比價", "PChome・momo・蝦皮同時查詢;預設只顯示信用良好的賣家")
-    c1, c2 = st.columns([4, 1])
-    kw = c1.text_input("搜尋商品", placeholder="例如:iPhone 16、羅技滑鼠、洗衣精").strip()
-    c2.button("🔍 比價", type="primary")
-    with st.expander("⚙️ 進階篩選"):
-        a, b = st.columns(2)
-        plats = a.multiselect("比價平台", S.PLATFORMS, default=S.PLATFORMS)
-        good = b.checkbox("只顯示信用良好賣家(蝦皮商城/高評價)", True)
-        must = a.checkbox("標題須包含所有關鍵字(過濾不相關配件)", True)
-        sort = b.radio("排序", ["價格由低到高", "價格由高到低"], horizontal=True)
-        pmin = a.number_input("最低價", 0, 10_000_000, 0, step=100)
-        pmax = b.number_input("最高價(0 = 不限)", 0, 10_000_000, 0, step=100)
-    if kw and plats:
-        with st.spinner("同時查詢各平台…"):
-            items, status = compare_cached(kw, tuple(plats), good)
-        for col, (p, (n, err)) in zip(st.columns(len(status)), status.items()):
-            col.metric(p, f"{n} 筆" if not err else "無法查詢", None if not err else "⚠️ 見下方說明", delta_color="off")
-        for p, (n, err) in status.items():
-            if err:
-                st.caption(f"⚠️ {p}:{err[:110]}　→ 可改用下方「到各平台自己搜尋」")
-        res = S.refine(items, kw, must, pmin, pmax, "desc" if "高到低" in sort else "asc")
-        sm = S.summary(res)
-        if sm:
-            a, b, c, d = st.columns(4)
-            a.metric("💰 最低價", f"{sm['min']:,.0f}", sm["best"]["platform"], delta_color="off")
-            b.metric("平均價", f"{sm['avg']:,.0f}"); c.metric("中位數", f"{sm['median']:,.0f}"); d.metric("符合筆數", sm["n"])
-            st.success(f"最便宜:{sm['best']['platform']}・{sm['best']['title'][:48]}")
-            st.link_button("前往最低價商品 ↗", sm["best"]["url"])
-            top = res[:12]
-            with st.spinner("載入商品圖片…"):
-                uris = img_uris([i.get("img", "") for i in top])
-            st.markdown("<div class='pgrid'>" + "".join(
-                f"<a class='pcard{' best' if i is sm['best'] else ''}' href='{_esc(i['url'])}' target='_blank'>"
-                f"<img src='{uris.get(i.get('img', ''), _PH_PROD)}' loading='lazy'><span class='pp'>${i['price']:,.0f}</span>"
-                f"<span class='pt'>{_esc(i['title'])}</span><span class='pb'>{_esc(i['platform'])}・{_esc(i['credit'])}</span></a>"
-                for i in top) + "</div>", unsafe_allow_html=True)
-            with st.expander(f"📋 完整清單({len(res)} 筆)"):
-                st.dataframe(pd.DataFrame([(i["platform"], i["price"], i["credit"], i["title"], i["url"]) for i in res],
-                                          columns=["平台", "價格(NT$)", "信用", "商品名稱", "連結"]), hide_index=True,
-                             column_config={"連結": st.column_config.LinkColumn("商品連結", display_text="開啟 ↗"),
-                                            "價格(NT$)": st.column_config.NumberColumn(format="%d")})
-            by = {}
-            for i in res:
-                by[i["platform"]] = min(by.get(i["platform"], 1e12), i["price"])
-            st.bar_chart(pd.DataFrame({"各平台最低價": by}), color="#d9441a")
-        elif items:
-            st.info("有查到商品,但都被篩選條件排除了。可取消「標題須包含所有關鍵字」或放寬價格範圍。")
-        else:
-            st.warning("所有平台都沒有回應(可能被網站暫時擋下)。請稍後再試,或使用下方連結直接搜尋。")
-        st.markdown("##### 🔗 到各平台自己搜尋(已排序低價)")
-        links = S.search_links(kw)
-        names = list(links.items())
-        for row in (names[:3], names[3:]):
-            for col, (name, url) in zip(st.columns(3), row):
-                col.link_button(f"{name} ↗", url)
-    else:
-        st.info("輸入想買的商品名稱,就會同時比較各平台價格。" if not kw else "請至少選擇一個平台。")
+SORTS = {"💰 最便宜": "price", "🎯 最相關": "score", "🔥 最熱銷": "sold", "⭐ 評價最好": "rating", "💸 最貴": "price_desc"}
 
+
+def _shop_pick_recent():
+    v = st.session_state.get("shop_recent_pick")
+    if v:
+        st.session_state["shop_kw"] = v
+        st.session_state["shop_recent_pick"] = None
+        st.session_state["shop_show"] = 24
+
+
+def _shop_watch():
+    return U.prefs().setdefault("shop_watch", {})
+
+
+def _shop_record(kw, sm):
+    """有追蹤的關鍵字,每次查詢就記下當天最低到手價(一天一筆,保留 90 筆)。"""
+    w = _shop_watch().get(kw)
+    if not (w and sm):
+        return
+    b = sm["best"]
+    entry = [K.tw_now().strftime("%Y/%m/%d"), b["price"] + (b.get("ship") or 0), S.PLATFORM_SHORT.get(b["platform"], b["platform"])]
+    h = w.setdefault("hist", [])
+    if h and h[-1][0] == entry[0]:
+        h[-1] = entry
+    else:
+        h.append(entry)
+    del h[:-90]
+
+
+def _pbadge(p):
+    return f"<span class='pbadge' style='background:{S.PLATFORM_COLOR.get(p, '#666')}'>{_esc(S.PLATFORM_SHORT.get(p, p))}</span>"
+
+
+def _shop_card(i, uri, best=False):
+    total = i["price"] + (i.get("ship") or 0)
+    orig = f"<span class='orig'>${i['orig']:,.0f}</span><span class='disc'>-{(1 - i['price'] / i['orig']) * 100:.0f}%</span>" if i.get("orig") else ""
+    meta = []
+    if i.get("rating"):
+        meta.append(f"⭐ {i['rating']:.1f}" + (f"({i['reviews']:,.0f})" if i.get("reviews") else ""))
+    if i.get("sold_text"):
+        meta.append(_esc(i["sold_text"]))
+    if i.get("ship"):
+        meta.append(f"🚚 運費 {i['ship']:,.0f}・到手 ${total:,.0f}")
+    tags = ("<span class='tag best'>🏆 最划算</span>" if best else "") + \
+           ("<span class='tag warn'>⚠️ 價格異常低,可能是配件</span>" if i.get("odd") else "") + \
+           ("<span class='tag warn'>🔌 疑似配件</span>" if i.get("acc") else "")
+    return (f"<a class='pcard{' best' if best else ''}' href='{_esc(i['url'])}' target='_blank'>{_pbadge(i['platform'])}"
+            f"<img src='{uri}' loading='lazy'><span><span class='pp'>${i['price']:,.0f}</span>{orig}</span>"
+            f"<span class='pt'>{_esc(i['title'])}</span><span class='pb'>{' ・ '.join(meta) or _esc(i['credit'])}</span>{tags}</a>")
+
+
+def shop_watch_view():
+    W = _shop_watch()
+    if not W:
+        return
+    with st.expander(f"🔔 我的降價追蹤({len(W)})", expanded=True):
+        if st.button("🔄 全部重新查價", key="shop_watch_refresh"):
+            with st.spinner("查詢中…"):
+                for kw_ in list(W):
+                    items_, _ = compare_cached(kw_, tuple(S.PLATFORMS), True)
+                    res_, _ = S.analyze(items_, kw_)
+                    _shop_record(kw_, S.summary(res_))
+        for kw_, w in list(W.items()):
+            h = w.get("hist") or []
+            last = h[-1] if h else None
+            tgt = w.get("target") or 0
+            hit = last and tgt and last[1] <= tgt
+            chg = ""
+            if len(h) >= 2:
+                d = h[-1][1] - h[-2][1]
+                chg = f"<span class='{'down' if d < 0 else 'up' if d > 0 else 'flat'}'>{'▼' if d < 0 else '▲' if d > 0 else '－'} {abs(d):,.0f}</span>"
+            lo = min((x[1] for x in h), default=None)
+            st.markdown(f"<div class='alert {'amber' if hit else ''}' style='margin:0'><div><b>{'🎯 ' if hit else ''}{_esc(kw_)}</b>"
+                        f"<small>{'目前最低 $' + format(last[1], ',.0f') + '(' + last[2] + ',' + last[0][5:] + ')' if last else '尚未查價'} {chg}"
+                        f"{'・歷史最低 $' + format(lo, ',.0f') if lo else ''}{'・目標 $' + format(tgt, ',.0f') if tgt else ''}"
+                        f"{'・✅ 已達目標價!' if hit else ''}</small></div></div>", unsafe_allow_html=True)
+            with st.container(horizontal=True):
+                if st.button("🔍 查看", key=f"sw_go_{kw_}"):
+                    st.session_state["shop_kw"] = kw_
+                    st.rerun()
+                if st.button("🗑️ 取消追蹤", key=f"sw_del_{kw_}"):
+                    W.pop(kw_, None)
+                    st.rerun()
+        st.caption("每次打開比價頁或按「重新查價」時記錄當天最低到手價;網站不會在背景自動查價。")
+
+
+def page_shop():
+    hero("🛒", "聰明比價", "PChome・momo・Yahoo・露天・蝦皮同時比・同款商品跨平台比價・降價追蹤")
+    ss = st.session_state
+    c1, c2 = st.container(key="shop_search").columns([5, 1])
+    kw = c1.text_input("搜尋商品", key="shop_kw", placeholder="例如:羅技 M720、象印 電子鍋、iPhone 16 128G",
+                       label_visibility="collapsed").strip()
+    c2.button("🔍 比價", type="primary", width="stretch")
+    if ss.get("shop_last_kw") != kw:  # 換關鍵字就從頭顯示
+        ss["shop_last_kw"], ss["shop_show"] = kw, 24
+    recent = list(U.pref("shop_recent", []))
+    if recent:
+        st.pills("最近搜尋", recent, key="shop_recent_pick", on_change=_shop_pick_recent, label_visibility="collapsed")
+    shop_watch_view()
+    with st.expander("⚙️ 平台與篩選"):
+        a, b = st.columns(2)
+        saved = [p for p in U.pref("shop_plats", S.PLATFORMS) if p in S.PLATFORMS] or S.PLATFORMS
+        plats = a.multiselect("比價平台", S.PLATFORMS, default=saved, key=f"shop_plats_{U.rev()}")
+        U.remember("shop_plats", plats)
+        good = b.checkbox("只顯示信用良好賣家(蝦皮商城/高評價、露天有成交紀錄)", True)
+        must = a.checkbox("標題須包含所有關鍵字(品牌中英文都算)", True)
+        hide_acc = b.checkbox("隱藏配件(殼、貼、線、收納包…)", True)
+        exclude = a.text_input("排除字詞(空白分隔)", placeholder="例如:福利品 二手 展示")
+        p1, p2 = b.columns(2)
+        pmin = p1.number_input("最低價", 0, 10_000_000, 0, step=100)
+        pmax = p2.number_input("最高價(0=不限)", 0, 10_000_000, 0, step=100)
+    if not kw:
+        st.markdown("<div class='card'><div class='ct'>💡 怎麼用</div><div class='cs'>"
+                    "・輸入<b>品牌 + 型號</b>最準,例如「羅技 M720」「象印 NL-AAF10」<br>"
+                    "・「同款比價」會把不同平台的同一個型號放在一起,一眼看出哪裡最便宜<br>"
+                    "・露天的價格會加上運費算「到手價」<br>・按「🔔 追蹤」可以記錄價格變化、設定目標價</div></div>", unsafe_allow_html=True)
+        return
+    if not plats:
+        st.info("請至少選擇一個平台。")
+        return
+    U.remember("shop_recent", ([kw] + [x for x in recent if x != kw])[:8])
+    with st.spinner("同時查詢各平台…"):
+        items, status = compare_cached(kw, tuple(plats), good)
+    chips = ""
+    for p, (n, err) in status.items():
+        chips += (f"<span class='chip' title='{_esc(err or '')}'>{_pbadge(p)} " + (f"{n} 筆" if not err else "⛔ 被擋") + "</span>")
+    st.markdown(chips, unsafe_allow_html=True)
+    if any(err for _, err in status.values()):
+        st.caption("⛔ 被擋 = 該網站拒絕伺服器查詢(蝦皮最常見),可用最下面的連結到網站自己搜尋。")
+    sort = SORTS[st.segmented_control("排序", list(SORTS), default="💰 最便宜", key="shop_sort", label_visibility="collapsed") or "💰 最便宜"]
+    res, dropped = S.analyze(items, kw, must, hide_acc, exclude, pmin, pmax, sort)
+    sm = S.summary(res)
+    if not sm:
+        if items:
+            st.info(f"有查到 {len(items)} 筆商品,但都被篩選掉了。可到「⚙️ 平台與篩選」取消「標題須包含所有關鍵字」或「隱藏配件」。")
+        else:
+            st.warning("所有平台都沒有回應(可能被網站暫時擋下)。請稍後再試,或用下方連結直接搜尋。")
+        _shop_links(kw)
+        return
+    _shop_record(kw, sm)
+    best = sm["best"]
+    show_n = ss.setdefault("shop_show", 24)
+    top = res[:show_n]
+    with st.spinner("載入商品圖片…"):
+        uris = img_uris([i.get("img", "") for i in top + [best]])
+
+    # ── 最划算 ──
+    total = best["price"] + (best.get("ship") or 0)
+    save = sm["median"] - total
+    st.markdown(
+        f"<div class='bestcard'><img src='{uris.get(best.get('img', ''), _PH_PROD)}'><div class='bb'>"
+        f"<div class='cs'>🏆 目前最划算 {_pbadge(best['platform'])}</div><div class='ct'>{_esc(best['title'])}</div>"
+        f"<div class='big' style='color:var(--ac)'>${total:,.0f}</div>"
+        f"<div class='cs'>{'含運費 ' + format(best['ship'], ',.0f') + ' 元・' if best.get('ship') else ''}"
+        f"{'比中位數便宜 $' + format(save, ',.0f') + '(' + format(save / sm['median'] * 100, '.0f') + '%)' if save > 0 else '接近市場行情'}</div>"
+        f"<a class='go' href='{_esc(best['url'])}' target='_blank'>前往購買 ↗</a></div></div>", unsafe_allow_html=True)
+    odd = f"・{sm['odd']} 筆價格異常低(已排最後)" if sm["odd"] else ""
+    st.markdown("<div class='tiles'>" + "".join(
+        f"<div class='tile' style='min-height:0'><span class='tl'>{a}</span><span class='tv'>{b}</span></div>" for a, b in
+        [("最低", f"${sm['min']:,.0f}"), ("中位數", f"${sm['median']:,.0f}"), ("最高", f"${sm['max']:,.0f}"), ("符合筆數", f"{sm['n']}")]) + "</div>",
+        unsafe_allow_html=True)
+    st.caption(f"已過濾 {dropped} 筆不相關或配件{odd}")
+    wt = _shop_watch().get(kw)
+    with st.popover("🔔 已追蹤・設定目標價" if wt else "🔔 追蹤這個商品的價格"):
+        tgt = st.number_input("目標價(到這個價格以下會在首頁提醒,0 = 不設定)", 0, 10_000_000,
+                              int((wt or {}).get("target") or 0), step=100, key=f"shop_tgt_{kw}")
+        cc1, cc2 = st.columns(2)
+        if cc1.button("💾 儲存追蹤", type="primary", key=f"shop_tgt_save_{kw}"):
+            _shop_watch()[kw] = {"target": tgt, "hist": (wt or {}).get("hist") or []}
+            _shop_record(kw, sm)
+            st.rerun()
+        if wt and cc2.button("取消追蹤", key=f"shop_tgt_del_{kw}"):
+            _shop_watch().pop(kw, None)
+            st.rerun()
+        if wt and len(wt.get("hist") or []) >= 2:
+            st.line_chart(pd.DataFrame({"最低到手價": [x[1] for x in wt["hist"]]}, index=[x[0][5:] for x in wt["hist"]]), height=160, color="#ff6b3d")
+
+    t1, t2, t3, t4 = st.tabs(["🛍️ 商品", "🔀 同款比價", "📊 價格分布", "📋 完整清單"])
+    with t1:
+        st.markdown("<div class='pgrid'>" + "".join(_shop_card(i, uris.get(i.get("img", ""), _PH_PROD), i is best) for i in top) + "</div>",
+                    unsafe_allow_html=True)
+        if len(res) > show_n:
+            if st.button(f"顯示更多(還有 {len(res) - show_n} 筆)", width="stretch"):
+                ss["shop_show"] = show_n + 24
+                st.rerun()
+    with t2:
+        groups = S.same_product_groups(res)
+        if not groups:
+            st.info("沒有找到在兩個以上平台都有賣的同一型號。輸入更明確的型號(例如「羅技 M720」)比較容易配對。")
+        for g in groups:
+            rows = ""
+            for k, x in enumerate(g["items"]):
+                tot = x["price"] + (x.get("ship") or 0)
+                diff = "" if k == 0 else f"<span class='up'>+{tot - (g['best']['price'] + (g['best'].get('ship') or 0)):,.0f}</span>"
+                rows += (f"<a class='grow' href='{_esc(x['url'])}' target='_blank'>{_pbadge(x['platform'])}"
+                         f"<span class='gt'>{_esc(x['title'])}</span><span class='gp'>{'🏆 ' if k == 0 else ''}${tot:,.0f} {diff}</span></a>")
+            st.markdown(f"<div class='card'><div class='ct'>{_esc(g['title'][:60])}</div>"
+                        f"<div class='cs'>型號/規格:{_esc(g['key'])}・{len(g['items'])} 個平台"
+                        f"{'・最多差 <b>$' + format(g['save'], ',.0f') + '</b>' if g['save'] > 0 else '・各平台同價'}</div>{rows}</div>",
+                        unsafe_allow_html=True)
+        st.caption("依標題中的型號/規格自動配對,同一型號的不同顏色或組合也可能被放在一起,下單前請再確認規格。")
+    with t3:
+        import altair as alt
+        df = pd.DataFrame([{"平台": S.PLATFORM_SHORT[i["platform"]], "到手價": i["price"] + (i.get("ship") or 0), "商品": i["title"][:40],
+                            "類型": "價格異常低" if i.get("odd") else "一般"} for i in res])
+        doms = [S.PLATFORM_SHORT[p] for p in S.PLATFORMS]
+        ch = alt.Chart(df).mark_circle(size=90, opacity=.75).encode(
+            x=alt.X("到手價:Q", scale=alt.Scale(zero=False), title="到手價(NT$)"), y=alt.Y("平台:N", title=None, sort=doms),
+            color=alt.Color("平台:N", scale=alt.Scale(domain=doms, range=[S.PLATFORM_COLOR[p] for p in S.PLATFORMS]), legend=None),
+            shape=alt.Shape("類型:N", legend=None), tooltip=["平台", "到手價", "商品"]).properties(height=60 + 46 * df["平台"].nunique())
+        rule = alt.Chart(pd.DataFrame({"x": [sm["median"]]})).mark_rule(strokeDash=[4, 4], color="#888").encode(x="x:Q")
+        st.altair_chart(ch + rule, width="stretch")
+        st.caption("每個點是一個商品,虛線是中位數。滑鼠移到點上可以看商品名稱。")
+    with t4:
+        st.dataframe(pd.DataFrame([(S.PLATFORM_SHORT[i["platform"]], i["price"] + (i.get("ship") or 0), i["price"], i.get("ship") or 0,
+                                    i.get("rating"), i.get("sold_text") or "", i["score"], i["title"], i["url"]) for i in res],
+                                  columns=["平台", "到手價", "售價", "運費", "評價", "銷量", "相關度", "商品名稱", "連結"]),
+                     hide_index=True, width="stretch",
+                     column_config={"連結": st.column_config.LinkColumn("連結", display_text="開啟 ↗"),
+                                    "到手價": st.column_config.NumberColumn(format="$%d"), "售價": st.column_config.NumberColumn(format="$%d"),
+                                    "相關度": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%d")})
+    _shop_links(kw)
+
+
+def _shop_links(kw):
+    st.markdown("##### 🔗 到各平台自己搜尋")
+    links = list(S.search_links(kw).items())
+    for col, (name, url) in zip(st.columns(len(links)), links):
+        col.link_button(f"{name} ↗", url, width="stretch")
 
 
 def page_wheel():
@@ -946,7 +1137,7 @@ def page_home():
         hol = f"🎉 正在放「{lw[0]['name']}」連假" if n <= 0 else f"距離「{lw[0]['name']}」連假還有 {n} 天"
     else:
         hol = ""
-    hero("🧰", greet, f"{today:%Y/%m/%d}({V.WD[today.weekday()]})・民國 {today.year - 1911} 年" + (f"・{hol}" if hol else ""))
+    hero("🧰", greet, home=False, sub=f"{today:%Y/%m/%d}({V.WD[today.weekday()]})・民國 {today.year - 1911} 年" + (f"・{hol}" if hol else ""))
 
     # ── 防災提醒 ──
     alerts = []
@@ -958,6 +1149,10 @@ def page_home():
     for e in (got["eq"] or [])[:3]:
         if (e["intensity"] or 0) >= 3 and _eq_recent(e, now):
             alerts.append(("amber", "🌏", f"{e['time']} {e['where']} 規模 {e['mag']},最大震度 {e['intensity']} 級"))
+    for kw_, w in (U.pref("shop_watch", {}) or {}).items():
+        h, tgt = w.get("hist") or [], w.get("target") or 0
+        if h and tgt and h[-1][1] <= tgt:
+            alerts.append(("amber", "🛒", f"「{kw_}」降到 ${h[-1][1]:,.0f}({h[-1][2]}),已低於目標價 ${tgt:,.0f}"))
     if alerts:
         st.markdown("".join(f"<div class='alert {c}'><span>{i}</span><div><b>{_esc(t)}</b></div></div>" for c, i, t in alerts),
                     unsafe_allow_html=True)
@@ -1023,9 +1218,10 @@ def page_home():
     link_text = {"weather": "天氣・空氣 →", "holidays": "假日行事曆 →", "stock": "股票 →", "fx": "匯率 →", "oil": "油價 →",
                  "invoice": "發票對獎 →", "movies": "電影時刻 →"}
     for i in range(0, len(tiles), 4):
-        for col, (pg, html) in zip(st.columns(4), tiles[i:i + 4]):
-            with col:
-                st.markdown("<div class='home'>" + html.replace("class='tile'", "class='tile' style='margin-bottom:4px'") + "</div>", unsafe_allow_html=True)
+        for j, (col, (pg, html)) in enumerate(zip(st.columns(4), tiles[i:i + 4])):
+            with col, st.container(key=f"tile_{i + j}_{pg}"):  # 整張卡片都可以點
+                more = f"<span class='more'>{link_text[pg]}</span></div>"
+                st.markdown("<div class='home'>" + html[:-len("</div>")] + more + "</div>", unsafe_allow_html=True)
                 st.page_link(PAGES[pg], label=link_text[pg])
 
     st.markdown("##### 🧰 小工具")
@@ -1041,7 +1237,8 @@ def page_settings():
         "天氣": lambda: K.fetch_weather("Taipei")["desc"], "油價": lambda: K.fetch_oil()["date"],
         "股票(證交所/Yahoo)": lambda: K.fetch_stock("0050", "1mo")["src"], "匯率(中間價)": lambda: f"{len(K.fetch_rates()['rates'])} 種",
         "發票(財政部)": lambda: K.fetch_invoice_periods()[0]["title"], "賓果(pilio)": lambda: f"{len(K.fetch_bingo())} 期",
-        "比價 PChome": lambda: f"{len(S.search_pchome('滑鼠'))} 筆", "比價 momo": lambda: f"{len(S.search_momo('滑鼠'))} 筆",
+        "比價 PChome": lambda: f"{len(S.search_pchome('滑鼠'))} 筆", "比價 momo": lambda: f"{len(S.search_momo('滑鼠'))} 筆", "比價 Yahoo": lambda: f"{len(S.search_yahoo('滑鼠'))} 筆",
+        "比價 露天": lambda: f"{len(S.search_ruten('滑鼠'))} 筆",
         "比價 蝦皮(常被擋)": lambda: f"{len(S.search_shopee('滑鼠'))} 筆"})
 
 
@@ -1067,6 +1264,7 @@ PAGES = {
     "photo": st.Page(page_photo, title="大頭照", icon="📸", url_path="photo"),
     "settings": st.Page(page_settings, title="設定與診斷", icon="⚙️", url_path="settings"),
 }
+U.HOME_PAGE = PAGES["home"]
 _G = lambda *ks: [PAGES[k] for k in ks]  # noqa: E731
 nav = st.navigation({"": _G("home"), "生活": _G("weather", "alerts", "holidays", "parking"),
                      "理財": _G("stock", "fx", "oil", "invoice", "shop"),

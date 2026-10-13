@@ -80,14 +80,22 @@ def make_session(retries: int = 3) -> requests.Session:
 NET = make_session()
 
 
+_NO_VERIFY_HOSTS: set[str] = set()  # 曾經憑證驗證失敗的網站,之後直接不驗證(避免每次都先失敗重試 ~30 秒)
+
+
 def http_get(url: str, *, timeout=(6, 15), encoding: str | None = None,
              session: requests.Session | None = None, **kw) -> requests.Response:
     """GET;憑證驗證失敗時自動退回不驗證(部分台灣網站憑證鏈不完整)。"""
     sess = session or NET
-    try:
-        r = sess.get(url, timeout=timeout, **kw)
-    except requests.exceptions.SSLError:
+    host = urllib3.util.parse_url(url).host or ""
+    if host in _NO_VERIFY_HOSTS:
         r = sess.get(url, timeout=timeout, verify=False, **kw)
+    else:
+        try:
+            r = sess.get(url, timeout=timeout, **kw)
+        except requests.exceptions.SSLError:
+            _NO_VERIFY_HOSTS.add(host)
+            r = sess.get(url, timeout=timeout, verify=False, **kw)
     r.raise_for_status()
     if encoding:
         r.encoding = encoding
@@ -926,7 +934,7 @@ def fetch_oil() -> dict:
 
 STOCK_RANGES = {"1個月": "1mo", "3個月": "3mo", "6個月": "6mo", "1年": "1y"}
 TW_TZ = timezone(timedelta(hours=8))
-MIS_HOME = "https://mis.twse.com.tw/stock/index.jsp"
+MIS_HOME = "https://mis.twse.com.tw/stock/index"
 MIS_API = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 TWSE_DAY_API = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
 _mis_session = make_session(retries=1)
@@ -987,8 +995,11 @@ def parse_mis(j: dict, code: str) -> dict | None:
 
 def fetch_mis(code: str) -> dict | None:
     for attempt in range(2):
-        if attempt or not _mis_session.cookies:  # 需先造訪首頁取得 session cookie
-            http_get(MIS_HOME, session=_mis_session, timeout=(6, 10))
+        if attempt or not _mis_session.cookies:  # 先造訪首頁取得 session cookie(失敗不影響查詢)
+            try:
+                http_get(MIS_HOME, session=_mis_session, timeout=(6, 10))
+            except Exception:  # noqa: BLE001
+                pass
         r = http_get(MIS_API, session=_mis_session, timeout=(6, 10), headers={"Referer": MIS_HOME},
                      params={"ex_ch": f"tse_{code}.tw|otc_{code}.tw", "json": "1", "delay": "0",
                              "_": int(time.time() * 1000)})

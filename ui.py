@@ -15,7 +15,13 @@ logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").set
 _esc = lambda x: _html.escape(str(x), quote=True).replace("$", "&#36;")  # noqa: E731
 
 
-def hero(icon, title, sub=""):
+HOME_PAGE = None  # app.py 建好導覽後設定,用來在每頁放「回首頁」按鈕
+
+
+def hero(icon, title, sub="", home=True):
+    if home and HOME_PAGE is not None:
+        with st.container(key="home_btn"):
+            st.page_link(HOME_PAGE, label="回首頁", icon="🏠")
     st.markdown(f"<div class='hero'><span class='ico'>{icon}</span><div><h1>{title}</h1><p>{sub}</p></div></div>", unsafe_allow_html=True)
 
 

@@ -1,5 +1,7 @@
-streamlit>=1.37
+streamlit>=1.53
 requests
 beautifulsoup4
 pillow
 pandas
+opencv-python-headless
+numpy
