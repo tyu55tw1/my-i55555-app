@@ -23,6 +23,7 @@ import daily_views as DV
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
+VERSION = "v2.1-店家改用Photon"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
@@ -1489,5 +1490,6 @@ nav.run()
 
 st.divider()
 st.caption("資料來源:開眼電影網・wttr.in・中央氣象署・環境部・人事行政總處・臺北市交通局・台灣中油・證交所・櫃買中心・財政部・"
-           "第一銀行・pilio・exchangerate-api　|　設定只存在你的瀏覽器　|　彩券相關內容僅供參考,請理性購買")
+           "第一銀行・pilio・exchangerate-api　|　設定只存在你的瀏覽器　|　彩券相關內容僅供參考,請理性購買"
+           f"　|　版本:{VERSION}")
 U.prefs_sync()
