@@ -163,10 +163,11 @@ def aqi_view():
         return
     order = {c: i for i, c in enumerate(L.COUNTY_XY)}
     counties = sorted({x["county"] for x in data}, key=lambda c: order.get(c, 99))
-    saved = U.pref("aqi_county", "臺北市")
+    saved = U.pref("aqi_county") if U.pref("aqi_set") and U.pref("aqi_county") else U.my_county()
     c1, c2 = st.columns([2, 1])
-    county = c1.selectbox("縣市", counties, index=counties.index(saved) if saved in counties else 0, key=f"aqi_county_{U.rev()}")
-    U.remember("aqi_county", county)
+    k = f"aqi_county_{U.rev()}"
+    county = c1.selectbox("縣市", counties, index=counties.index(saved) if saved in counties else 0, key=k,
+                          on_change=lambda: (U.remember("aqi_county", st.session_state[k]), U.remember("aqi_set", True)))
     with c2:
         pos = U.geolocate("geo_aqi", "📍 離我最近的測站")
     if pos:

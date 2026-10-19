@@ -39,7 +39,7 @@ DV.D = _D
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
-VERSION = "v2.3-吃什麼自動放大範圍"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
+VERSION = "v2.4-天氣跟著我家"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
@@ -519,13 +519,26 @@ def page_weather():
         V.aqi_view()
 
 
+def my_city() -> str:
+    """天氣用的城市:自己在天氣頁選過就用選的,不然跟著「我家」所在的縣市。"""
+    if U.pref("city_set") and U.pref("city") in CITIES:
+        return U.pref("city")
+    c = U.my_county().replace("臺", "台").rstrip("市縣")
+    return c if c in CITIES else "台北"
+
+
+def my_aqi_county() -> str:
+    return U.pref("aqi_county") if U.pref("aqi_set") and U.pref("aqi_county") else U.my_county()
+
+
 def weather_view():
     cities = CITIES
     c1, c2 = st.columns([1, 2])
-    p0 = U.pref("city", "台北")
-    pick = c1.selectbox("快速選城市", list(cities), index=list(cities).index(p0) if p0 in cities else 0, key=f"wx_city_{U.rev()}")
+    p0 = my_city()
+    k = f"wx_city_{U.rev()}"
+    pick = c1.selectbox("快速選城市", list(cities), index=list(cities).index(p0) if p0 in cities else 0, key=k,
+                        on_change=lambda: (U.remember("city", st.session_state[k]), U.remember("city_set", True)))
     q = c2.text_input("或輸入任何城市(英文名)", cities[pick] or U.pref("city_q", "Tokyo"), key=f"wx_q_{pick}_{U.rev()}").strip() or "Taipei"
-    U.remember("city", pick)
     if not cities[pick]:
         U.remember("city_q", q)
     d = safe(weather, q)
@@ -1196,7 +1209,7 @@ def page_home():
     today = now.date()
     h_ = now.hour
     greet = "夜深了,早點休息 🌙" if h_ < 5 else "早安 ☀️" if h_ < 11 else "午安 🍱" if h_ < 14 else "下午好 ☕" if h_ < 18 else "晚安 🌙"
-    city = U.pref("city", "台北")
+    city = my_city()
     q = CITIES.get(city) or U.pref("city_q", "Taipei") or "Taipei"
     watch = list(U.pref("watch", ["0050", "2330", "00878"]))[:6]
     holds = list(U.pref("holdings", []))
@@ -1262,7 +1275,7 @@ def page_home():
     else:
         tiles.append(("weather", _tile("⛅ 天氣", "—", "暫時無法取得")))
     aq = got["aq"]
-    county = U.pref("aqi_county", "臺北市")
+    county = my_aqi_county()
     sites = [x for x in aq or [] if x["county"] == county and x["aqi"] is not None]
     if sites:
         avg = sum(x["aqi"] for x in sites) / len(sites)
