@@ -758,7 +758,20 @@ def comic_news(follows) -> list[tuple[dict, dict]]:
 
 
 def page_comics():
-    hero("📚", "漫畫", "手機漫畫書櫃(CBZ / ZIP / PDF / 圖片)・WEBTOON 追更提醒")
+    hero("📚", "漫畫", "線上看正版漫畫・WEBTOON 追更提醒・手機漫畫書櫃")
+    st.markdown("##### 🌐 線上看漫畫(正版、免費)")
+    sites = [("💚 LINE WEBTOON", "https://www.webtoons.com/zh-hant/", "中文條漫,也有咒術迴戰、鏈鋸人等日漫官方中文版"),
+             ("🔴 MANGA Plus", "https://mangaplus.shueisha.co.jp/updates", "集英社官方,JUMP 作品最新話免費(英文等外文)"),
+             ("🟠 少年 JUMP+", "https://shonenjumpplus.com/", "日文,很多免費連載"),
+             ("📗 台南市圖電子書", "https://tnml.ebook.hyread.com.tw/", "HyRead,用台南市圖借書證免費借中文漫畫")]
+    for i in range(0, len(sites), 2):
+        for col, (name, url, note) in zip(st.columns(2), sites[i:i + 2]):
+            with col:
+                st.link_button(name, url, use_container_width=True)
+                st.caption(note)
+    st.caption("手機上有裝這些 App 的話,點了通常會直接用 App 打開。")
+    st.divider()
+    st.markdown("##### 📖 我的漫畫書櫃(手機裡的漫畫檔)")
     st.caption("選手機裡的 CBZ、ZIP、PDF 或一堆圖片加進書櫃,會記住看到哪一頁。點封面就全螢幕看:條漫往下滑,"
                "日漫點左邊翻下一頁,點中間叫出選單(換模式、跳頁、調暗),按 ← 回書櫃。漫畫只存在這支手機的瀏覽器裡,不會上傳。")
     with open(READER_HTML, encoding="utf-8") as fh:
