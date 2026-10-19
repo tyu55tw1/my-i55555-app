@@ -329,8 +329,10 @@ def page_food():
     n = c2.slider("轉盤放幾家", 4, 16, 10)
     kinds = st.pills("種類", list(D.FOOD_KIND), default=["restaurant", "fast_food", "cafe", "food_court"],
                      format_func=D.FOOD_KIND.get, selection_mode="multi")
-    rows = U.safe(food_c, round(loc[0], 3), round(loc[1], 3), radius)
-    if rows is None:
+    try:
+        rows = food_c(round(loc[0], 3), round(loc[1], 3), radius)
+    except Exception as e:  # noqa: BLE001
+        st.warning(f"😵 {e}")
         return
     rows = [r for r in rows if r["kind"] in (kinds or list(D.FOOD_KIND))]
     seen = set()
@@ -394,7 +396,7 @@ def page_fuel():
                 if dist <= radius / 1000:
                     rows.append({**s, "dist": dist})
         if st.toggle("也找台塑、全國等其他品牌(OpenStreetMap,較慢)", key="fuel_osm"):
-            for x in U.safe(fuel_osm_c, round(loc[0], 3), round(loc[1], 3), radius) or []:
+            for x in U.quiet(fuel_osm_c, round(loc[0], 3), round(loc[1], 3), radius) or []:
                 tg = x["tags"]
                 if tg.get("amenity") != "fuel":
                     continue
@@ -417,9 +419,15 @@ def page_fuel():
                             f"{('・' + _esc(tags)) if tags else ''}</div><div class='cs'>📍 {_esc(r['addr'])}　"
                             f"<a href='{_nav(r['lat'], r['lon'])}' target='_blank'>🧭 導航</a></div></div>", unsafe_allow_html=True)
     else:
-        rows = [x for x in (U.safe(fuel_osm_c, round(loc[0], 3), round(loc[1], 3), radius) or [])
-                if x["tags"].get("amenity") == "charging_station"]
-        if not rows:
+        try:
+            rows = [x for x in fuel_osm_c(round(loc[0], 3), round(loc[1], 3), radius)
+                    if x["tags"].get("amenity") == "charging_station"]
+        except Exception as e:  # noqa: BLE001
+            st.warning(f"😵 {e}")
+            rows = None
+        if rows is None:
+            pass
+        elif not rows:
             st.info("範圍內沒有找到充電站(OpenStreetMap 資料可能不齊,也可以用 Plugshare 或各家充電 app 查)。")
         else:
             swap = lambda r: "gogoro" in (r["name"] + str(r["tags"].get("brand", "")) + str(r["tags"].get("operator", ""))).lower()  # noqa: E731

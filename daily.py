@@ -426,11 +426,37 @@ def _nominatim(lat, lon, radius, kinds) -> list[dict]:
     return list(out.values())
 
 
+def _photon(lat, lon, radius, kinds) -> list[dict] | None:
+    """Photon(komoot,OpenStreetMap 資料):依種類找附近的點,每種最多 50 筆。雲端伺服器上最不容易被擋。"""
+    out = {}
+    for k in kinds:
+        r = K.NET.get("https://photon.komoot.io/reverse", timeout=(5, 15), headers=UA,
+                      params={"lat": f"{lat:.5f}", "lon": f"{lon:.5f}", "radius": max(radius / 1000, .1), "limit": 50,
+                              "osm_tag": f"amenity:{k}", "lang": "default"})
+        if r.status_code != 200:
+            return None
+        for f in r.json().get("features", []):
+            pr, (lo, la) = f.get("properties") or {}, f["geometry"]["coordinates"]
+            addr = f"{pr.get('street', '')}{pr.get('housenumber', '')}"
+            out[f"{pr.get('osm_type')}{pr.get('osm_id')}"] = {
+                "id": f"{pr.get('osm_type')}{pr.get('osm_id')}", "name": pr.get("name") or "", "lat": la, "lon": lo,
+                "tags": {"amenity": pr.get("osm_value", k), **({"addr:street": addr} if addr else {})}}
+    return list(out.values())
+
+
 def pois(lat: float, lon: float, radius: int, kinds: list[str]) -> list[dict]:
-    """附近某些種類的地點(OpenStreetMap)。先試 Overpass,滿載或逾時就改用 Nominatim。依距離排序。"""
-    rows = _overpass(lat, lon, radius, kinds)
+    """附近某些種類的地點(OpenStreetMap)。依序試 Photon → Overpass → Nominatim,哪個能用就用哪個。依距離排序。"""
+    rows, errs = None, []
+    for fn in (_photon, _overpass, _nominatim):
+        try:
+            rows = fn(lat, lon, radius, kinds)
+        except Exception as e:  # noqa: BLE001
+            errs.append(type(e).__name__)
+            rows = None
+        if rows is not None:
+            break
     if rows is None:
-        rows = _nominatim(lat, lon, radius, kinds)
+        raise RuntimeError("店家資料的伺服器現在都太忙,等一兩分鐘再重新整理")
     out = []
     for r in rows:
         r["dist"] = L.haversine(lat, lon, r["lat"], r["lon"])
