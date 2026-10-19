@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="漫畫書櫃">
+<meta name="theme-color" content="#0e1117">
+<title>漫畫書櫃</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{--bg:#0e1117;--card:#1a1f2b;--line:rgba(255,255,255,.12);--text:#eaeef6;--mute:rgba(234,238,246,.6);--ac:#ff6b3d}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f6f7fb;--card:#fff;--line:rgba(0,0,0,.1);--text:#1b2030;--mute:rgba(27,32,48,.6)}}
+:root[data-theme="dark"]{--bg:#0e1117;--card:#1a1f2b;--line:rgba(255,255,255,.12);--text:#eaeef6;--mute:rgba(234,238,246,.6)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+#lib{padding:calc(14px + env(safe-area-inset-top)) 16px 40px;max-width:900px;margin:0 auto}
+.head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.head h1{font-size:1.4rem;margin:0;flex:1}
+.btn{border:0;border-radius:14px;padding:11px 16px;font-weight:800;background:linear-gradient(135deg,#d9441a,#ff9a5c);color:#fff;min-height:44px}
+.btn.g{background:var(--card);color:var(--text);border:1px solid var(--line)}
+.info{color:var(--mute);font-size:.85rem;margin:4px 0 14px;line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+@media(max-width:380px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
+.book{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;position:relative}
+.book .cv{aspect-ratio:3/4;background:#222 center/cover no-repeat;display:block;width:100%;border:0;padding:0}
+.book .t{font-weight:800;font-size:.9rem;padding:8px 10px 2px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.book .p{font-size:.78rem;color:var(--mute);padding:0 10px 10px}
+.book .bar{height:4px;background:var(--line)}.book .bar i{display:block;height:100%;background:var(--ac)}
+.book .more{position:absolute;top:6px;right:6px;width:34px;height:34px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:1.1rem}
+.book .tag{position:absolute;top:8px;left:8px;font-size:.7rem;font-weight:800;padding:3px 7px;border-radius:8px;background:rgba(0,0,0,.6);color:#fff}
+.empty{border:2px dashed var(--line);border-radius:18px;padding:30px 18px;text-align:center;color:var(--mute);line-height:1.7}
+#busy{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;place-items:center;z-index:50;color:#fff;font-weight:800;text-align:center;padding:20px}
+/* 閱讀器 */
+#rd{position:fixed;inset:0;background:#000;display:none;z-index:20;color:#fff}
+#rd.on{display:block}
+#pg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;touch-action:pan-y pinch-zoom}
+#pg img{max-width:100%;max-height:100%;object-fit:contain;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#sc{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none}
+#sc .pp{width:100%;max-width:800px;margin:0 auto;background:#111;position:relative;overflow:hidden}
+#sc .pp img{display:block;width:100%;height:auto}
+#sc .pp .n{position:absolute;top:40%;left:0;right:0;text-align:center;color:#555;font-size:.9rem}
+.ui{position:absolute;left:0;right:0;background:rgba(14,17,23,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:transform .2s;z-index:5}
+#top{top:0;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;display:flex;align-items:center;gap:8px}
+#top .tt{flex:1;font-weight:800;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#bot{bottom:0;padding:10px 14px calc(12px + env(safe-area-inset-bottom))}
+#rd.hide #top{transform:translateY(-110%)}#rd.hide #bot{transform:translateY(110%)}
+.ib{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:12px;min-width:44px;min-height:40px;padding:6px 10px;font-weight:700}
+.modes{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.modes button{flex:1;min-width:88px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#fff;border-radius:10px;padding:8px 4px;font-size:.85rem;font-weight:700}
+.modes button.on{background:#ff6b3d;border-color:#ff6b3d}
+.row{display:flex;align-items:center;gap:10px}
+.row input[type=range]{flex:1;accent-color:#ff6b3d}
+#num{min-width:74px;text-align:right;font-variant-numeric:tabular-nums;font-size:.9rem}
+#dim{position:absolute;inset:0;background:#000;pointer-events:none;opacity:0;z-index:4}
+#toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);padding:10px 16px;border-radius:12px;font-weight:800;display:none;z-index:6}
+</style>
+</head>
+<body>
+<div id="lib">
+  <div class="head"><h1>📚 我的漫畫書櫃</h1><button class="btn" id="add">➕ 加入漫畫</button></div>
+  <div class="info" id="info">支援 CBZ、ZIP、PDF、圖片(可一次選多張當一本)。漫畫存在這支手機的瀏覽器裡,不會上傳。</div>
+  <div class="grid" id="grid"></div>
+  <input type="file" id="file" multiple accept=".cbz,.zip,.pdf,.jpg,.jpeg,.png,.webp,.gif,.avif,application/zip,application/pdf,image/*" hidden>
+</div>
+<div id="busy"></div>
+<div id="rd">
+  <div id="pg"><img id="im" alt=""></div>
+  <div id="sc"></div>
+  <div id="dim"></div>
+  <div id="toast"></div>
+  <div class="ui" id="top"><button class="ib" id="back">←</button><div class="tt" id="tt"></div><button class="ib" id="lt" title="亮度">☀️</button></div>
+  <div class="ui" id="bot">
+    <div class="modes"><button data-m="scroll">⬇️ 條漫(直捲)</button><button data-m="rtl">⬅️ 日漫(右翻左)</button><button data-m="ltr">➡️ 左翻右</button></div>
+    <div class="row"><input type="range" id="slider" min="1" value="1"><span id="num"></span></div>
+  </div>
+</div>
+<script>
+"use strict";
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const $ = s => document.querySelector(s);
+const IMG_RE = /\.(jpe?g|png|webp|gif|avif|bmp)$/i;
+const natural = (a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: "base"});
+
+// ── IndexedDB:books(書的資料、進度)、files(原始檔案) ──
+let dbp;
+function db() {
+  return dbp ||= new Promise((ok, no) => {
+    const r = indexedDB.open("comicshelf", 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("books", {keyPath: "id"}); r.result.createObjectStore("files", {keyPath: "id"}); };
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  });
+}
+async function tx(store, mode, fn) {
+  const d = await db();
+  return new Promise((ok, no) => {
+    const t = d.transaction(store, mode), s = t.objectStore(store);
+    const r = fn(s); t.oncomplete = () => ok(r && r.result); t.onerror = () => no(t.error); t.onabort = () => no(t.error);
+  });
+}
+const allBooks = () => tx("books", "readonly", s => s.getAll());
+const getBook = id => tx("books", "readonly", s => s.get(id));
+const putBook = b => tx("books", "readwrite", s => s.put(b));
+const getFile = id => tx("files", "readonly", s => s.get(id));
+const putFile = f => tx("files", "readwrite", s => s.put(f));
+async function delBook(id) { await tx("books", "readwrite", s => s.delete(id)); await tx("files", "readwrite", s => s.delete(id)); }
+
+function busy(msg) { const b = $("#busy"); b.textContent = msg || ""; b.style.display = msg ? "grid" : "none"; }
+
+// ── 開書:回傳 {count, get(i) → objectURL} ──
+async function openSource(book) {
+  const f = await getFile(book.id);
+  if (!f) throw new Error("找不到檔案(可能被瀏覽器清掉了),請重新加入");
+  if (book.type === "pdf") {
+    const pdf = await pdfjsLib.getDocument({data: await f.blob.arrayBuffer()}).promise;
+    return {count: pdf.numPages, async get(i) {
+      const page = await pdf.getPage(i + 1);
+      const w = Math.min(1600, Math.round(innerWidth * (devicePixelRatio || 1)));
+      const vp0 = page.getViewport({scale: 1}), vp = page.getViewport({scale: w / vp0.width});
+      const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+      await page.render({canvasContext: c.getContext("2d"), viewport: vp}).promise;
+      return URL.createObjectURL(await new Promise(r => c.toBlob(r, "image/jpeg", .9)));
+    }};
+  }
+  if (book.type === "images") {
+    return {count: f.blobs.length, async get(i) { return URL.createObjectURL(f.blobs[i]); }};
+  }
+  const zip = await JSZip.loadAsync(f.blob);
+  const names = Object.keys(zip.files).filter(n => !zip.files[n].dir && IMG_RE.test(n) && !/(^|\/)(__MACOSX|\.)/.test(n)).sort(natural);
+  return {count: names.length, async get(i) { return URL.createObjectURL(await zip.file(names[i]).async("blob")); }};
+}
+
+async function thumb(url) {
+  const im = new Image(); im.src = url; await im.decode();
+  const w = 240, h = Math.round(w * im.naturalHeight / im.naturalWidth);
+  const c = document.createElement("canvas"); c.width = w; c.height = Math.min(h, 360);
+  c.getContext("2d").drawImage(im, 0, 0, w, h);
+  return {cover: c.toDataURL("image/jpeg", .7), ratio: im.naturalHeight / im.naturalWidth};
+}
+
+// ── 加入漫畫 ──
+$("#add").onclick = () => $("#file").click();
+$("#file").onchange = async e => {
+  const files = [...e.target.files]; e.target.value = "";
+  if (!files.length) return;
+  const imgs = files.filter(f => IMG_RE.test(f.name) || f.type.startsWith("image/")).sort((a, b) => natural(a.name, b.name));
+  const jobs = files.filter(f => !imgs.includes(f)).map(f => ({type: /\.pdf$/i.test(f.name) || f.type === "application/pdf" ? "pdf" : "zip", file: f,
+                                                                title: f.name.replace(/\.(cbz|zip|pdf)$/i, "")}));
+  if (imgs.length) {
+    const t = prompt(`把這 ${imgs.length} 張圖當成一本,書名:`, imgs[0].name.replace(/[\s_\-]*\d*\.\w+$/, "") || "我的漫畫");
+    if (t !== null) jobs.push({type: "images", files: imgs, title: t || "我的漫畫"});
+  }
+  let done = 0;
+  for (const j of jobs) {
+    busy(`加入中 ${++done}/${jobs.length}:${j.title}`);
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try {
+      if (j.type === "images") await putFile({id, blobs: j.files});
+      else await putFile({id, blob: j.file});
+      const book = {id, title: j.title, type: j.type, added: Date.now(), last: 0, page: 0, mode: ""};
+      const src = await openSource(book);
+      if (!src.count) throw new Error("裡面沒有圖片");
+      book.count = src.count;
+      const urls = [];
+      for (let k = 0; k < Math.min(3, src.count); k++) urls.push(await src.get(k));
+      const th = await thumb(urls[0]);
+      const ratios = [th.ratio];
+      for (const u of urls.slice(1)) ratios.push((await thumb(u)).ratio);
+      urls.forEach(u => URL.revokeObjectURL(u));
+      book.cover = th.cover;
+      book.ratio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+      book.mode = book.ratio > 1.9 ? "scroll" : "rtl";   // 很長的圖 = 條漫
+      await putBook(book);
+    } catch (err) {
+      await delBook(id).catch(() => {});
+      alert(`「${j.title}」加入失敗:${err.message || err}\n(RAR/CBR 格式請先轉成 ZIP)`);
+    }
+  }
+  busy("");
+  render();
+};
+
+// ── 書櫃 ──
+async function render() {
+  const books = (await allBooks()).sort((a, b) => (b.last || b.added) - (a.last || a.added));
+  const g = $("#grid");
+  g.innerHTML = "";
+  if (!books.length) {
+    g.outerHTML = `<div class="grid" id="grid"></div>`;
+    $("#grid").innerHTML = `<div class="empty" style="grid-column:1/-1">還沒有漫畫<br>按右上角「➕ 加入漫畫」選手機裡的 CBZ / ZIP / PDF 或圖片<br><small>建議用瀏覽器「加入主畫面」,打開就像 App,漫畫也比較不會被清掉</small></div>`;
+  }
+  for (const b of books) {
+    const pct = b.count ? Math.round(((b.page || 0) + 1) / b.count * 100) : 0;
+    const el = document.createElement("div");
+    el.className = "book";
+    el.innerHTML = `<button class="cv" style="background-image:url('${b.cover || ""}')"></button>
+      <span class="tag">${b.mode === "scroll" ? "條漫" : "漫畫"}</span><button class="more">⋯</button>
+      <div class="bar"><i style="width:${b.last ? pct : 0}%"></i></div>
+      <div class="t"></div><div class="p">${b.last ? `看到 ${(b.page || 0) + 1} / ${b.count}` : `共 ${b.count} 頁・還沒看`}</div>`;
+    el.querySelector(".t").textContent = b.title;
+    el.querySelector(".cv").onclick = () => openBook(b.id);
+    el.querySelector(".more").onclick = async () => {
+      const a = prompt(`「${b.title}」\n輸入新書名可以改名;輸入「刪除」會把這本從書櫃移除`, b.title);
+      if (a === null) return;
+      if (a.trim() === "刪除") { if (confirm(`確定刪除「${b.title}」?`)) await delBook(b.id); }
+      else if (a.trim()) { b.title = a.trim(); await putBook(b); }
+      render();
+    };
+    $("#grid").appendChild(el);
+  }
+  try {
+    const e = await navigator.storage.estimate();
+    $("#info").textContent = `${books.length} 本・已用 ${(e.usage / 1048576).toFixed(0)} MB / 可用約 ${(e.quota / 1073741824).toFixed(1)} GB。` +
+      "漫畫存在這支手機的瀏覽器裡,不會上傳。支援 CBZ、ZIP、PDF、圖片。";
+  } catch (_) {}
+  fitFrame();
+  setTimeout(fitFrame, 300);   // 封面圖載入後再量一次
+}
+
+// ── 閱讀器 ──
+let B = null, S = null, cur = 0, urls = new Map(), saveT = 0, io = null, heights = [];
+function url(i) {
+  if (urls.has(i)) { const v = urls.get(i); urls.delete(i); urls.set(i, v); return v; }
+  const p = S.get(i); urls.set(i, p);
+  while (urls.size > 14) {   // 只留最近用到的,省記憶體
+    const [k, v] = urls.entries().next().value;
+    if (Math.abs(k - cur) < 4) { urls.delete(k); urls.set(k, v); break; }
+    urls.delete(k); v.then(u => URL.revokeObjectURL(u));
+  }
+  return p;
+}
+function toast(t) { const el = $("#toast"); el.textContent = t; el.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = "none", 900); }
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => { if (B) { B.page = cur; B.last = Date.now(); putBook(B); } }, 400);
+}
+function setNum() { $("#num").textContent = `${cur + 1} / ${S.count}`; $("#slider").value = cur + 1; }
+
+async function openBook(id) {
+  busy("打開中…");
+  try {
+    B = await getBook(id); S = await openSource(B);
+    B.count = S.count; cur = Math.min(B.page || 0, S.count - 1);
+  } catch (err) { busy(""); alert(err.message || err); return; }
+  busy("");
+  $("#tt").textContent = B.title;
+  $("#slider").max = S.count;
+  $("#rd").classList.add("on"); $("#rd").classList.add("hide");
+  document.body.style.overflow = "hidden";
+  frameFull(true);
+  layout();
+  toast(B.mode === "scroll" ? "往下滑看・點一下叫出選單" : (B.mode === "rtl" ? "點左邊下一頁・點中間叫出選單" : "點右邊下一頁・點中間叫出選單"));
+}
+function closeBook() {
+  if (!B) return;
+  B.page = cur; B.last = Date.now(); putBook(B);
+  if (io) io.disconnect();
+  urls.forEach(p => p.then(u => URL.revokeObjectURL(u))); urls.clear();
+  $("#sc").innerHTML = ""; $("#im").removeAttribute("src");
+  $("#rd").classList.remove("on"); document.body.style.overflow = "";
+  frameFull(false);
+  B = S = null; render();
+}
+$("#back").onclick = () => closeBook();
+
+// 放在生活助手頁面裡(iframe)時:看書時把自己撐滿整個手機畫面,關書後縮回書櫃大小
+let frameOld = null;
+function frameFull(on) {
+  let fe = null;
+  try { fe = window.frameElement; } catch (_) {}
+  if (!fe) return;
+  const pd = fe.ownerDocument;
+  if (on) {
+    frameOld = fe.getAttribute("style") || "";
+    fe.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;z-index:2147483000;border:0;background:#000";
+    pd.documentElement.style.overflow = "hidden"; pd.body.style.overflow = "hidden";
+  } else {
+    fe.setAttribute("style", frameOld || "");
+    pd.documentElement.style.overflow = ""; pd.body.style.overflow = "";
+    fitFrame();
+  }
+}
+function fitFrame() {   // 書櫃模式:iframe 高度跟著內容
+  let fe = null;
+  try { fe = window.frameElement; } catch (_) {}
+  if (fe && !B) fe.style.height = Math.max(420, document.documentElement.scrollHeight + 4) + "px";
+}
+
+function layout() {
+  document.querySelectorAll(".modes button").forEach(b => b.classList.toggle("on", b.dataset.m === B.mode));
+  const scroll = B.mode === "scroll";
+  $("#pg").style.display = scroll ? "none" : "flex";
+  $("#sc").style.display = scroll ? "block" : "none";
+  if (scroll) buildScroll(); else { $("#sc").innerHTML = ""; if (io) io.disconnect(); showPage(); }
+  setNum();
+}
+document.querySelectorAll(".modes button").forEach(b => b.onclick = () => { B.mode = b.dataset.m; putBook(B); layout(); });
+
+// 翻頁模式
+async function showPage() {
+  const i = cur, u = await url(i);
+  if (i !== cur || !B || B.mode === "scroll") return;
+  $("#im").src = u; setNum(); save();
+  for (const k of [cur + 1, cur + 2, cur - 1]) if (k >= 0 && k < S.count) url(k);   // 先讀好前後頁
+}
+function go(d) {
+  const n = cur + d;
+  if (n < 0) return toast("已經是第一頁");
+  if (n >= S.count) return toast("看完了 🎉");
+  cur = n; showPage();
+}
+function tapZone(x) {   // 0 = 左, 1 = 中, 2 = 右
+  const w = innerWidth; return x < w * .3 ? 0 : x > w * .7 ? 2 : 1;
+}
+let tx0 = 0, ty0 = 0, tt0 = 0;
+$("#pg").addEventListener("touchstart", e => { if (e.touches.length === 1) { tx0 = e.touches[0].clientX; ty0 = e.touches[0].clientY; tt0 = Date.now(); } }, {passive: true});
+$("#pg").addEventListener("touchend", e => {
+  if (e.changedTouches.length !== 1 || (visualViewport && visualViewport.scale > 1.05)) return;
+  const dx = e.changedTouches[0].clientX - tx0, dy = e.changedTouches[0].clientY - ty0;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && Date.now() - tt0 < 600) {
+    e.preventDefault();
+    go((dx > 0) === (B.mode === "rtl") ? 1 : -1);   // 日漫:往右滑 = 下一頁
+  }
+});
+$("#pg").addEventListener("click", e => {
+  const z = tapZone(e.clientX);
+  if (z === 1) return $("#rd").classList.toggle("hide");
+  $("#rd").classList.add("hide");
+  go((z === 0) === (B.mode === "rtl") ? 1 : -1);
+});
+addEventListener("keydown", e => {
+  if (!B) return;
+  if (B.mode !== "scroll" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) go((e.key === "ArrowLeft") === (B.mode === "rtl") ? 1 : -1);
+  if (e.key === "Escape") closeBook();
+});
+
+// 條漫模式:一頁一格,靠近畫面才讀圖,遠離就釋放
+function buildScroll() {
+  const sc = $("#sc"); sc.innerHTML = "";
+  const w = Math.min(innerWidth, 800), est = Math.round(w * (B.ratio || 1.5));
+  heights = Array(S.count).fill(est);
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < S.count; i++) {
+    const d = document.createElement("div"); d.className = "pp"; d.dataset.i = i; d.style.height = est + "px";
+    d.innerHTML = `<div class="n">${i + 1}</div>`; frag.appendChild(d);
+  }
+  sc.appendChild(frag);
+  const target = sc.children[cur];
+  if (target) sc.scrollTop = target.offsetTop;
+  nearLoad();
+}
+function nearLoad() {   // 畫面上下各 1.5 個螢幕內的頁面就載入;離很遠的釋放記憶體(高度保留,不會跳動)
+  const sc = $("#sc"), top = sc.scrollTop - sc.clientHeight * 1.5, bottom = sc.scrollTop + sc.clientHeight * 2.5;
+  for (const d of sc.children) {
+    const a = d.offsetTop, b = a + d.offsetHeight, i = +d.dataset.i;
+    if (b >= top && a <= bottom) loadInto(d, i);
+    else if (d.querySelector("img") && Math.abs(i - cur) > 6) {
+      d.style.height = d.offsetHeight + "px"; d.querySelector("img").remove();
+    }
+  }
+}
+async function loadInto(d, i) {
+  if (d.querySelector("img") || d.dataset.loading) return;
+  d.dataset.loading = 1;
+  const u = await url(i);
+  delete d.dataset.loading;
+  if (!d.isConnected || d.querySelector("img")) return;
+  const im = new Image();
+  im.onload = () => {   // 載好才把格子改成圖片真正的高度;在目前位置上面的格子變高時,維持目前看的位置
+    if (!im.isConnected) return;
+    const sc = $("#sc"), before = d.offsetHeight, above = d.offsetTop + before <= sc.scrollTop + 2;
+    d.style.height = "";
+    const delta = d.offsetHeight - before;
+    if (above && delta) sc.scrollTop += delta;
+  };
+  im.src = u;
+  d.prepend(im);   // 先放進去(格子高度還是預估值),不等解碼,圖載好就會出現
+}
+$("#sc").addEventListener("scroll", () => {
+  const sc = $("#sc"), y = sc.scrollTop + sc.clientHeight * .3;
+  let i = cur, el = sc.children[i];
+  while (el && el.offsetTop > y && i > 0) el = sc.children[--i];
+  while (el && el.offsetTop + el.offsetHeight < y && i < S.count - 1) el = sc.children[++i];
+  if (i !== cur) { cur = i; setNum(); save(); }
+  clearTimeout(nearLoad.t); nearLoad.t = setTimeout(nearLoad, 80);
+}, {passive: true});
+$("#sc").addEventListener("click", () => $("#rd").classList.toggle("hide"));
+
+$("#slider").oninput = e => {
+  cur = +e.target.value - 1; setNum();
+  if (B.mode === "scroll") { const el = $("#sc").children[cur]; if (el) $("#sc").scrollTop = el.offsetTop; save(); }
+  else showPage();
+};
+const DIM = [0, .25, .45, .6];
+$("#lt").onclick = () => {
+  const k = (DIM.indexOf(+(localStorage.getItem("cs_dim") || 0)) + 1) % DIM.length;
+  try { localStorage.setItem("cs_dim", DIM[k]); } catch (_) {}
+  $("#dim").style.opacity = DIM[k]; toast(k ? `調暗 ${k} 段` : "原本亮度");
+};
+try { $("#dim").style.opacity = +(localStorage.getItem("cs_dim") || 0); } catch (_) {}
+
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+render();
+</script>
+</body>
+</html>

@@ -39,7 +39,7 @@ DV.D = _D
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
-VERSION = "v2.4.1-修首頁當掉"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
+VERSION = "v2.5-漫畫書櫃"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
@@ -1229,7 +1229,8 @@ def page_home():
     with st.spinner("整理今天的資訊…"):
         got = U.parallel(timeout=8, w=lambda: weather(q), aq=V.aqi, wn=V.cwa_warnings, cl=V.closures, eq=V.earthquakes,
                          bank=V.bank_rates, oil=oil, qs=lambda: V.quotes(codes), inv=invoices, cal=V.holidays_all,
-                         out=lambda a=DV.outage_args(): DV.outage_for(today, *a))
+                         out=lambda a=DV.outage_args(): DV.outage_for(today, *a),
+                         comic=lambda f=list(U.pref("comic_follow", [])): DV.comic_news(f) if f else [])
     cal = got["cal"] or []
     lw = [x for x in L.long_weekends(cal) if x["end"] >= today] if cal else []
     if lw:
@@ -1357,6 +1358,10 @@ def page_home():
         ym = today.strftime("%Y-%m")
         tiles.append(("ledger", _tile("📒 本月花費", f"{DV.month_total(led, ym):,.0f} 元",
                                       f"今天 {DV.month_total(led, today.isoformat()):,.0f} 元・訂閱 {DV.D.month_sub_cost(subs):,.0f} 元/月")))
+    news = got.get("comic") or []
+    if news:
+        tiles.insert(0, ("comics", _tile("📚 漫畫更新", f"{len(news)} 部有新話", "<br>".join(
+            f"{_esc(f['title'][:10])}:{_esc(it['title'][:12])}" for f, it in news[:3]), small=True)))
     dd, period = _next_invoice_draw(today)
     inv = got["inv"]
     latest = inv[0]["title"] if inv else ""
@@ -1367,7 +1372,7 @@ def page_home():
                                   small=True)))
     link_text = {"bus": "公車 →", "weather": "天氣・空氣 →", "holidays": "假日行事曆 →", "stock": "股票 →", "fx": "匯率 →", "oil": "油價 →",
                  "invoice": "發票對獎 →", "movies": "電影時刻 →",
-                 "garbage": "垃圾車 →", "dues": "繳費提醒 →", "ledger": "記帳 →"}
+                 "garbage": "垃圾車 →", "dues": "繳費提醒 →", "ledger": "記帳 →", "comics": "漫畫 →"}
     for i in range(0, len(tiles), 4):
         for j, (col, (pg, html)) in enumerate(zip(st.columns(4), tiles[i:i + 4])):
             with col, st.container(key=f"tile_{i + j}_{pg}"):  # 整張卡片都可以點
@@ -1376,7 +1381,7 @@ def page_home():
                 st.page_link(PAGES[pg], label=link_text[pg])
 
     st.markdown("##### 🧰 小工具")
-    tools = [("food", "今天吃什麼"), ("ledger", "記帳"), ("dues", "繳費提醒"), ("garbage", "垃圾車"), ("outage", "停水停電"),
+    tools = [("comics", "漫畫"), ("food", "今天吃什麼"), ("ledger", "記帳"), ("dues", "繳費提醒"), ("garbage", "垃圾車"), ("outage", "停水停電"),
              ("freeway", "國道路況"), ("fuel", "加油・充電"), ("split", "聚餐分帳"), ("tools", "換算・計時"), ("parking", "找停車位"),
              ("wheel", "幸運轉盤"), ("shop", "比價"), ("photo", "大頭照")]
     for i in range(0, len(tools), 7):
@@ -1520,12 +1525,13 @@ PAGES = {
     "fuel": st.Page(DV.page_fuel, title="加油・充電", icon="⛽", url_path="fuel"),
     "ledger": st.Page(DV.page_ledger, title="記帳", icon="📒", url_path="ledger"),
     "dues": st.Page(DV.page_dues, title="繳費提醒", icon="📅", url_path="dues"),
+    "comics": st.Page(DV.page_comics, title="漫畫", icon="📚", url_path="comics"),
 }
 U.HOME_PAGE = PAGES["home"]
 _G = lambda *ks: [PAGES[k] for k in ks]  # noqa: E731
 nav = st.navigation({"": _G("home"), "生活": _G("weather", "alerts", "outage", "garbage", "holidays", "bus", "freeway", "parking", "fuel"),
                      "理財": _G("ledger", "dues", "stock", "fx", "oil", "invoice", "shop"),
-                     "娛樂": _G("food", "movies", "wheel", "bingo", "lotto", "advisor"),
+                     "娛樂": _G("comics", "food", "movies", "wheel", "bingo", "lotto", "advisor"),
                      "工具": _G("split", "tools", "photo", "settings")}, position="top")
 nav.run()
 

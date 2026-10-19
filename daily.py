@@ -599,3 +599,45 @@ DUE_PRESETS = [   # (名稱, 種類, 月, 日, 提早幾天, 說明)
 def month_sub_cost(subs: list[dict]) -> float:
     """訂閱每月平均要花多少(年繳的除以 12)。"""
     return sum(float(s.get("amt") or 0) / (12 if s.get("cycle") == "每年" else 1) for s in subs)
+
+
+# ════════════════════════════════════════════════════════════════════
+#  📚 漫畫追更(LINE WEBTOON 每部作品都有公開的 RSS;其他網站有 RSS 也可以)
+# ════════════════════════════════════════════════════════════════════
+def feed_url(link: str) -> str:
+    """WEBTOON 作品頁 / 某一話的網址 → 這部作品的 RSS 網址;其他網址原樣當作 RSS。"""
+    from urllib.parse import parse_qs, urlparse
+    u = urlparse(link.strip())
+    if "webtoons.com" not in u.netloc:
+        return link.strip()
+    tn = (parse_qs(u.query).get("title_no") or [""])[0]
+    parts = [p for p in u.path.split("/") if p]
+    if not tn or len(parts) < 3:
+        raise ValueError("看不懂這個 WEBTOON 網址,請貼作品的目錄頁(網址裡有 title_no=)")
+    return f"https://www.webtoons.com/{parts[0]}/{parts[1]}/{parts[2]}/rss?title_no={tn}"
+
+
+def _rss_date(s: str):
+    """「週三, 29 7月 2026 13:00:21 GMT」或英文「Wed, 29 Jul 2026 13:00:21 GMT」→ 台灣時間 datetime。"""
+    from email.utils import parsedate_to_datetime
+    try:
+        d = parsedate_to_datetime(s)
+    except (TypeError, ValueError):
+        m = re.search(r"(\d{1,2})\s+(\d{1,2})月\s+(\d{4})\s+(\d{1,2}):(\d{2})", s or "")
+        if not m:
+            return None
+        from datetime import timezone
+        d = datetime(int(m[3]), int(m[2]), int(m[1]), int(m[4]), int(m[5]), tzinfo=timezone.utc)
+    return d.astimezone(K.TW_TZ) if d.tzinfo else d
+
+
+def fetch_feed(url: str) -> dict:
+    r = K.NET.get(url, timeout=(6, 20), headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
+    r.raise_for_status()
+    root = _xml(r.content)
+    ch = root.find("channel")
+    if ch is None:
+        raise RuntimeError("這個網址不是漫畫的更新資料(RSS)")
+    items = [{"title": _t(it, "title"), "link": _t(it, "link"), "date": _rss_date(_t(it, "pubDate"))}
+             for it in ch.findall("item")[:8]]
+    return {"title": _t(ch, "title"), "link": _t(ch, "link"), "cover": _t(ch, "image/url"), "items": items}

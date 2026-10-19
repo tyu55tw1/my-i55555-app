@@ -3,6 +3,7 @@
 資料抓取在 daily.py;設定和記帳資料都存在瀏覽器(U.pref / U.remember)。"""
 from __future__ import annotations
 
+import os
 import random
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
@@ -737,3 +738,87 @@ def page_dues():
                 st.success("已儲存")
                 st.rerun()
     st.caption("提醒只會在打開網頁時看到(網頁沒辦法主動推播到手機)。")
+
+
+# ════════════════════════════════════════════════════════════════════
+#  📚 漫畫:書櫃(static/comic.html)+ 追更清單
+# ════════════════════════════════════════════════════════════════════
+feed_c = st.cache_data(ttl=1800, show_spinner=False)(D.fetch_feed)
+READER_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "comic.html")
+
+
+def comic_news(follows) -> list[tuple[dict, dict]]:
+    """首頁用:有新話的作品 [(追蹤項目, 最新一話)]。"""
+    out = []
+    for f in follows:
+        feed = U.quiet(feed_c, f["rss"])
+        if feed and feed["items"] and feed["items"][0]["link"] != f.get("seen"):
+            out.append((f, feed["items"][0]))
+    return out
+
+
+def page_comics():
+    hero("📚", "漫畫", "手機漫畫書櫃(CBZ / ZIP / PDF / 圖片)・WEBTOON 追更提醒")
+    st.caption("選手機裡的 CBZ、ZIP、PDF 或一堆圖片加進書櫃,會記住看到哪一頁。點封面就全螢幕看:條漫往下滑,"
+               "日漫點左邊翻下一頁,點中間叫出選單(換模式、跳頁、調暗),按 ← 回書櫃。漫畫只存在這支手機的瀏覽器裡,不會上傳。")
+    with open(READER_HTML, encoding="utf-8") as fh:
+        components_html(fh.read(), height=560, scrolling=False)
+    st.divider()
+    st.markdown("##### 🔔 追更清單")
+    follows = list(U.pref("comic_follow", []))
+    with st.form("comic_add", clear_on_submit=True):
+        link = st.text_input("貼上 LINE WEBTOON 作品網址", placeholder="例如:https://www.webtoons.com/zh-hant/action/xxx/list?title_no=1234")
+        if st.form_submit_button("➕ 追這部", type="primary") and link.strip():
+            try:
+                rss = D.feed_url(link)
+                feed = feed_c(rss)
+                if any(f["rss"] == rss for f in follows):
+                    st.info("這部已經在追了")
+                else:
+                    latest = feed["items"][0]["link"] if feed["items"] else ""
+                    follows.append({"rss": rss, "title": feed["title"], "link": feed["link"], "seen": latest})
+                    U.remember("comic_follow", follows)
+                    st.success(f"開始追「{feed['title']}」,出新話會在這裡和首頁提醒你")
+            except Exception as e:  # noqa: BLE001
+                st.warning(f"加不進來:{e}")
+    st.caption("怎麼拿網址:在 WEBTOON App 或網站打開作品 → 分享 → 複製連結,貼到上面。其他有 RSS 的漫畫網站也可以貼 RSS 網址。")
+    if not follows:
+        st.info("還沒有追任何作品。")
+        return
+    if st.button("🔄 檢查更新", key="comic_refresh"):
+        feed_c.clear()
+    now = K.tw_now()
+    for k, f in enumerate(follows):
+        feed = U.quiet(feed_c, f["rss"])
+        with st.container(border=True):
+            if not feed:
+                st.markdown(f"**{_esc(f['title'])}**　<span style='opacity:.6'>暫時讀不到更新</span>", unsafe_allow_html=True)
+            else:
+                items = feed["items"]
+                new = [it for it in items if it["link"] != f.get("seen")]
+                try:
+                    n_new = items.index(next(it for it in items if it["link"] == f.get("seen")))
+                except StopIteration:
+                    n_new = len(new) if f.get("seen") else 0
+                a, b = st.columns([1, 4], vertical_alignment="center")
+                if feed["cover"]:
+                    a.image(feed["cover"], width=72)
+                top = items[0] if items else None
+                when = ""
+                if top and top["date"]:
+                    days = (now.date() - top["date"].date()).days
+                    when = "今天" if days == 0 else "昨天" if days == 1 else f"{days} 天前"
+                badge = f"<b style='color:#ff6b3d'>🆕 {n_new} 話新的</b>　" if n_new else ""
+                b.markdown(f"**{_esc(feed['title'])}**<br>{badge}最新:{_esc(top['title']) if top else '—'}"
+                           f"<span style='opacity:.6'>　{when}</span>", unsafe_allow_html=True)
+            c1, c2, c3 = st.columns(3)
+            if feed and feed["items"]:
+                c1.link_button("📖 看最新", feed["items"][0]["link"])
+                if feed["items"][0]["link"] != f.get("seen") and c2.button("✓ 看過了", key=f"comic_seen_{k}"):
+                    follows[k] = {**f, "seen": feed["items"][0]["link"]}
+                    U.remember("comic_follow", follows)
+                    st.rerun()
+            if c3.button("🗑️ 不追了", key=f"comic_rm_{k}"):
+                U.remember("comic_follow", follows[:k] + follows[k + 1:])
+                st.rerun()
+    st.caption("每 30 分鐘最多檢查一次。點「看最新」會在 WEBTOON 官方網頁或 App 打開,作者也有收入。")
