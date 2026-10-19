@@ -1,0 +1,9 @@
+# 金鑰檔不可上傳到 GitHub
+.streamlit/secrets.toml
+secrets.toml
+*.toml.txt
+# 本機用的東西
+.claude/
+__pycache__/
+*.pyc
+*_備份_*.py
