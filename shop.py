@@ -14,7 +14,8 @@ from core import UA, make_session
 
 _S = make_session(retries=1)
 _H = {"User-Agent": UA, "Accept": "application/json, text/plain, */*", "Accept-Language": "zh-TW,zh;q=0.9"}
-PLATFORMS = ["PChome 24h", "momo 購物網", "Yahoo購物中心", "露天拍賣", "蝦皮購物"]
+# 蝦皮會擋雲端伺服器的查詢（HTTP 403），不放進自動比價，改成在結果上方給一個直接開蝦皮搜尋的按鈕
+PLATFORMS = ["PChome 24h", "momo 購物網", "Yahoo購物中心", "露天拍賣"]
 PLATFORM_COLOR = {"PChome 24h": "#e3002b", "momo 購物網": "#d6006f", "Yahoo購物中心": "#6001d2", "露天拍賣": "#1c6fd1", "蝦皮購物": "#ee4d2d"}
 PLATFORM_SHORT = {"PChome 24h": "PChome", "momo 購物網": "momo", "Yahoo購物中心": "Yahoo", "露天拍賣": "露天", "蝦皮購物": "蝦皮"}
 

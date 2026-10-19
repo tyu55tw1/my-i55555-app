@@ -67,10 +67,23 @@ UA = (
 )
 
 
+class _TWAdapter(HTTPAdapter):
+    """憑證照樣驗證，只放寬 Python 3.13 起多加的「嚴格模式」（VERIFY_X509_STRICT）。
+    財政部發票、環境部等政府網站的憑證缺 Subject Key Identifier，嚴格模式會直接拒絕；
+    以前要先失敗一次再改成完全不驗證（每次多等 6～30 秒），現在直接連得上，也比完全不驗證安全。"""
+
+    def init_poolmanager(self, *args, **kwargs):
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+        kwargs["ssl_context"] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+
 def make_session(retries: int = 3) -> requests.Session:
     s = requests.Session()
     retry = Retry(total=retries, backoff_factor=0.6, status_forcelist=[429, 500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=16)
+    adapter = _TWAdapter(max_retries=retry, pool_maxsize=16)
     s.mount("http://", adapter)
     s.mount("https://", adapter)
     s.headers.update({"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.6"})

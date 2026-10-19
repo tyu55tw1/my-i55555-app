@@ -18,6 +18,7 @@ import shop as S
 import ui as U
 import views as V
 import wheel as W
+import tdx as TD
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
@@ -27,6 +28,9 @@ st.markdown("""<style>
 .block-container{padding:4.6rem 1.2rem 3.5rem;max-width:1120px}
 footer{visibility:hidden}
 .hero{display:flex;align-items:center;gap:16px;background:linear-gradient(120deg,#ff6b3d,#ff9a5c 55%,#f5c542);padding:16px 22px;border-radius:22px;margin:4px 0 18px;color:#fff;box-shadow:0 10px 28px rgba(255,107,61,.22)}
+.busfav{display:flex;justify-content:space-between;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 14px}
+.busfav .bs{opacity:.7;font-size:.85rem}.beta{font-weight:800;white-space:nowrap}.busfav .beta{font-size:1.3rem}
+.beta.now{color:#ff6b3d}.beta.soon{color:#f59f00}.beta.mute{opacity:.55;font-weight:400;font-size:.85rem}
 .hero h1{margin:0;font-size:1.55rem;color:#fff;padding:0}.hero p{margin:2px 0 0;opacity:.95;color:#fff}.hero .ico{font-size:2.4rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.25))}
 div[data-testid=stMetric]{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px 16px}
 div[data-testid=stMetricLabel] p{opacity:.72;font-size:.85rem}div[data-testid=stMetricValue]{font-weight:800}
@@ -157,7 +161,7 @@ weather = st.cache_data(ttl=600, show_spinner="取得氣象…")(K.fetch_weather
 oil = st.cache_data(ttl=1800, show_spinner="取得牌價…")(K.fetch_oil)
 stock = st.cache_data(ttl=20, show_spinner="取得報價…")(K.fetch_stock)
 rates = st.cache_data(ttl=1800, show_spinner="取得匯率…")(K.fetch_rates)
-invoices = st.cache_data(ttl=3600, show_spinner="取得財政部號碼…")(K.fetch_invoice_periods)
+invoices = st.cache_data(ttl=6 * 3600, show_spinner="取得財政部號碼…")(K.fetch_invoice_periods)   # 兩個月才開獎一次，不用常抓
 bingo_draws = st.cache_data(ttl=300, show_spinner="取得賓果開獎…")(K.fetch_bingo)
 
 
@@ -537,10 +541,12 @@ def page_oil():
 
 
 def page_stock():
-    hero("📈", "股票", "自選股・個股走勢・除權息日曆(證交所資料,Yahoo 僅備援)")
-    t1, t2, t3 = st.tabs(["⭐ 自選股", "🔍 個股查詢", "📅 除權息"])
+    hero("📈", "股票", "自選股・持股損益・個股走勢・除權息日曆(證交所資料,Yahoo 僅備援)")
+    t1, t4, t2, t3 = st.tabs(["⭐ 自選股", "💼 我的持股", "🔍 個股查詢", "📅 除權息"])
     with t1:
         V.watchlist_view()
+    with t4:
+        V.holdings_view()
     with t2:
         stock_detail()
     with t3:
@@ -922,7 +928,7 @@ def shop_watch_view():
 
 
 def page_shop():
-    hero("🛒", "聰明比價", "PChome・momo・Yahoo・露天・蝦皮同時比・同款商品跨平台比價・降價追蹤")
+    hero("🛒", "聰明比價", "PChome・momo・Yahoo・露天同時比・蝦皮一鍵開啟・同款商品跨平台比價・降價追蹤")
     ss = st.session_state
     c1, c2 = st.container(key="shop_search").columns([5, 1])
     kw = c1.text_input("搜尋商品", key="shop_kw", placeholder="例如:羅技 M720、象印 電子鍋、iPhone 16 128G",
@@ -939,7 +945,7 @@ def page_shop():
         saved = [p for p in U.pref("shop_plats", S.PLATFORMS) if p in S.PLATFORMS] or S.PLATFORMS
         plats = a.multiselect("比價平台", S.PLATFORMS, default=saved, key=f"shop_plats_{U.rev()}")
         U.remember("shop_plats", plats)
-        good = b.checkbox("只顯示信用良好賣家(蝦皮商城/高評價、露天有成交紀錄)", True)
+        good = b.checkbox("只顯示信用良好賣家(露天有成交紀錄)", True)
         must = a.checkbox("標題須包含所有關鍵字(品牌中英文都算)", True)
         hide_acc = b.checkbox("隱藏配件(殼、貼、線、收納包…)", True)
         exclude = a.text_input("排除字詞(空白分隔)", placeholder="例如:福利品 二手 展示")
@@ -962,8 +968,10 @@ def page_shop():
     for p, (n, err) in status.items():
         chips += (f"<span class='chip' title='{_esc(err or '')}'>{_pbadge(p)} " + (f"{n} 筆" if not err else "⛔ 被擋") + "</span>")
     st.markdown(chips, unsafe_allow_html=True)
+    st.link_button(f"🛍️ 到蝦皮看「{kw}」(便宜的排前面)", S.search_links(kw)["蝦皮"],
+                   help="蝦皮會擋伺服器查詢,沒辦法直接一起比價,點這裡用你的瀏覽器開蝦皮的搜尋結果")
     if any(err for _, err in status.values()):
-        st.caption("⛔ 被擋 = 該網站拒絕伺服器查詢(蝦皮最常見),可用最下面的連結到網站自己搜尋。")
+        st.caption("⛔ 被擋 = 該網站拒絕伺服器查詢,可用最下面的連結到網站自己搜尋。")
     sort = SORTS[st.segmented_control("排序", list(SORTS), default="💰 最便宜", key="shop_sort", label_visibility="collapsed") or "💰 最便宜"]
     res, dropped = S.analyze(items, kw, must, hide_acc, exclude, pmin, pmax, sort)
     sm = S.summary(res)
@@ -1127,9 +1135,11 @@ def page_home():
     city = U.pref("city", "台北")
     q = CITIES.get(city) or U.pref("city_q", "Taipei") or "Taipei"
     watch = list(U.pref("watch", ["0050", "2330", "00878"]))[:6]
+    holds = list(U.pref("holdings", []))
+    codes = tuple(dict.fromkeys(watch + [h["code"] for h in holds]))
     with st.spinner("整理今天的資訊…"):
         got = U.parallel(timeout=8, w=lambda: weather(q), aq=V.aqi, wn=V.cwa_warnings, cl=V.closures, eq=V.earthquakes,
-                         bank=V.bank_rates, oil=oil, qs=lambda: V.quotes(tuple(watch)), inv=invoices, cal=V.holidays_all)
+                         bank=V.bank_rates, oil=oil, qs=lambda: V.quotes(codes), inv=invoices, cal=V.holidays_all)
     cal = got["cal"] or []
     lw = [x for x in L.long_weekends(cal) if x["end"] >= today] if cal else []
     if lw:
@@ -1175,8 +1185,14 @@ def page_home():
         avg = sum(x["aqi"] for x in sites) / len(sites)
         name, col, _ = L.aqi_level(avg)
         tiles.append(("weather", _tile(f"🌫️ {county} 空氣", f"AQI {avg:.0f}", f"{name}・{len(sites)} 個測站平均", value_style=f"color:{col}")))
-    else:
-        tiles.append(("weather", _tile("🌫️ 空氣品質", "—", "暫時無法取得")))
+    else:   # 環境部抓不到（例如公用金鑰額度用完）：改用 Open-Meteo 的估計值，跟空氣品質頁一樣
+        om = U.quiet(V.aqi_om, *L.COUNTY_XY[county]) if county in L.COUNTY_XY else None
+        if om and om.get("aqi") is not None:
+            name, col, _ = L.aqi_level(om["aqi"])
+            tiles.append(("weather", _tile(f"🌫️ {county} 空氣", f"AQI {om['aqi']:.0f}", f"{name}・Open-Meteo 估計值",
+                                           value_style=f"color:{col}")))
+        else:
+            tiles.append(("weather", _tile("🌫️ 空氣品質", "—", "暫時無法取得")))
     if cal:
         named = [x for x in cal if x["off"] and x["desc"] and x["date"] >= today]
         if named:
@@ -1194,6 +1210,13 @@ def page_home():
                 cls = "up" if diff > 0 else "down" if diff < 0 else "flat"
                 rows.append((f"{c} <span class='nm'>{_esc(x['name'][:4])}</span>", f"{x['price']:,.2f} <span class='{cls}'>{diff / x['prev'] * 100:+.2f}%</span>"))
         tiles.append(("stock", _tile("⭐ 自選股", "", "漲紅跌綠" if rows else "暫時無法取得報價", rows)))
+    if holds and qs:
+        _, t = V.portfolio(holds, qs)
+        if t["成本"]:
+            c_ = "var(--up)" if t["損益"] > 0 else "var(--down)" if t["損益"] < 0 else ""
+            tiles.append(("stock", _tile("💼 持股損益", f"{t['損益']:+,.0f}",
+                                         f"報酬率 {t['損益'] / t['成本'] * 100:+.2f}%・今日 {t['今日']:+,.0f}",
+                                         value_style=f"color:{c_}")))
     b = got["bank"]
     if b:
         cur = U.pref("fx_cur", "USD")
@@ -1207,6 +1230,11 @@ def page_home():
             ch = f" <span class='{'up' if p_ > pv else 'down'}'>{p_ - pv:+.1f}</span>" if pv and abs(p_ - pv) >= 0.05 else ""
             rows.append((n_.replace(" 無鉛汽油", "").replace("超級", ""), f"{p_:.1f}{ch}"))
         tiles.append(("oil", _tile("⛽ 中油油價", "", f"牌價日期 {o['date']}", rows)))
+    bfavs = list(U.pref("bus_favs", []))
+    if bfavs and all(_tdx_keys()):
+        rows = [(f"{_esc(f['route'])} <span class='nm'>{_esc(f['name'][:6])}</span>", f"<span class='beta {cls}'>{_esc(t_)}</span>")
+                for f, cls, t_ in bus_fav_eta(bfavs[:4])]
+        tiles.insert(0, ("bus", _tile("🚌 公車常用站", "", f"{now:%H:%M} 即時到站", rows)))
     dd, period = _next_invoice_draw(today)
     inv = got["inv"]
     latest = inv[0]["title"] if inv else ""
@@ -1215,7 +1243,7 @@ def page_home():
     favs = U.pref("fav_cinemas", [])
     tiles.append(("movies", _tile("🎬 電影", "現在能看什麼?", f"常去戲院 {len(favs)} 間" if favs else "可在電影頁設定常去戲院",
                                   small=True)))
-    link_text = {"weather": "天氣・空氣 →", "holidays": "假日行事曆 →", "stock": "股票 →", "fx": "匯率 →", "oil": "油價 →",
+    link_text = {"bus": "公車 →", "weather": "天氣・空氣 →", "holidays": "假日行事曆 →", "stock": "股票 →", "fx": "匯率 →", "oil": "油價 →",
                  "invoice": "發票對獎 →", "movies": "電影時刻 →"}
     for i in range(0, len(tiles), 4):
         for j, (col, (pg, html)) in enumerate(zip(st.columns(4), tiles[i:i + 4])):
@@ -1238,8 +1266,103 @@ def page_settings():
         "股票(證交所/Yahoo)": lambda: K.fetch_stock("0050", "1mo")["src"], "匯率(中間價)": lambda: f"{len(K.fetch_rates()['rates'])} 種",
         "發票(財政部)": lambda: K.fetch_invoice_periods()[0]["title"], "賓果(pilio)": lambda: f"{len(K.fetch_bingo())} 期",
         "比價 PChome": lambda: f"{len(S.search_pchome('滑鼠'))} 筆", "比價 momo": lambda: f"{len(S.search_momo('滑鼠'))} 筆", "比價 Yahoo": lambda: f"{len(S.search_yahoo('滑鼠'))} 筆",
-        "比價 露天": lambda: f"{len(S.search_ruten('滑鼠'))} 筆",
-        "比價 蝦皮(常被擋)": lambda: f"{len(S.search_shopee('滑鼠'))} 筆"})
+        "比價 露天": lambda: f"{len(S.search_ruten('滑鼠'))} 筆"})
+
+
+# ═════════ 🚌 公車常用站（TDX；跟「智慧交通規劃」公車 app 同一套資料） ═════════
+def _tdx_keys():
+    return L._secret("TDX_CLIENT_ID"), L._secret("TDX_CLIENT_SECRET")
+
+
+@st.cache_data(ttl=3000, show_spinner=False)
+def _tdx_tok(cid, sec):
+    return TD.token(cid, sec)
+
+
+@st.cache_data(ttl=86400, show_spinner="載入路線清單…")
+def bus_routes(city):
+    return TD.routes(_tdx_tok(*_tdx_keys()), city)
+
+
+@st.cache_data(ttl=86400, show_spinner="載入站牌…")
+def bus_sor(city, route):
+    return TD.stop_of_route(_tdx_tok(*_tdx_keys()), city, route)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def bus_etas(city, uids):
+    return TD.stops_eta(_tdx_tok(*_tdx_keys()), city, list(uids))
+
+
+def bus_fav_eta(favs):
+    """常用站 → [(常用站, 樣式, 文字)]；同一個縣市的站一次查完（TDX 每分鐘只能查 5 次）。"""
+    by = {}
+    for f in favs:
+        by.setdefault(f["city"], set()).add(f["stop"])
+    raw = {}
+    for city, uids in by.items():
+        for e in U.quiet(bus_etas, city, tuple(sorted(uids))) or []:
+            raw.setdefault((e.get("StopUID"), TD.zh(e.get("RouteName"))), []).append(e)
+    out = []
+    for f in favs:
+        cands = raw.get((f["stop"], f["route"]), [])
+        e = next((c for c in cands if f.get("sub") and c.get("SubRouteUID") == f["sub"]), None) or \
+            next((c for c in cands if c.get("Direction", 0) == f.get("dir", 0)), None)
+        out.append((f, *TD.eta_text(e)))
+    return out
+
+
+def page_bus():
+    hero("🚌", "公車常用站", "常搭的公車站加進來，首頁直接看到下一班幾分到（交通部 TDX 即時資料）")
+    if not all(_tdx_keys()):
+        st.info("要先設定 TDX 金鑰（免費）：到 Streamlit 這個 app 的 ⋮ → Settings → Secrets，加上\n\n"
+                "`TDX_CLIENT_ID = \"…\"`\n\n`TDX_CLIENT_SECRET = \"…\"`\n\n跟公車 app 用同一組就可以。")
+        return
+    favs = list(U.pref("bus_favs", []))
+    if favs:
+        auto = st.toggle("自動更新（每 60 秒）", value=True, key="bus_auto")
+
+        def show():
+            for i, (f, cls, txt) in enumerate(bus_fav_eta(favs)):
+                c1, c2 = st.columns([10, 1], vertical_alignment="center")
+                c1.markdown(f"<div class='busfav'><div><b>🚌 {_esc(f['route'])}</b> <span class='bs'>往 {_esc(f.get('to', ''))}</span>"
+                            f"<div class='bs'>{_esc(f['name'])}</div></div><div class='beta {cls}'>{_esc(txt)}</div></div>",
+                            unsafe_allow_html=True)
+                if c2.button("✕", key=f"busfav_rm_{i}", help="從常用移除"):
+                    U.remember("bus_favs", [x for j, x in enumerate(favs) if j != i])
+                    st.rerun()
+            st.caption(f"{K.tw_now():%H:%M:%S} 更新")
+        st.fragment(run_every=60 if auto else None)(show)()
+    else:
+        st.caption("還沒有常用站，從下面加。")
+    st.markdown("##### ➕ 加常用站")
+    names = list(TD.CITIES)
+    saved = U.pref("bus_city", "臺南市")
+    c1, c2 = st.columns(2)
+    cname = c1.selectbox("縣市", names, index=names.index(saved) if saved in names else 0, key="bus_city_sel")
+    U.remember("bus_city", cname)
+    city = TD.CITIES[cname]
+    rts = safe(bus_routes, city) or []
+    route = c2.selectbox("路線（可以直接打字搜尋）", rts, index=None, placeholder="例如:紅4、綠幹線", key=f"bus_route_{city}")
+    if not route:
+        return
+    subs = safe(bus_sor, city, route) or []
+    if not subs:
+        st.caption("查不到這條路線的站牌。")
+        return
+    d1, d2 = st.columns(2)
+    si = d1.selectbox("方向", range(len(subs)), format_func=lambda i: subs[i]["name"], key=f"bus_dir_{city}_{route}")
+    seq = subs[si]["stops"]
+    ki = d2.selectbox("上車站（可以直接打字搜尋）", range(len(seq)), index=None, placeholder="選上車站",
+                      format_func=lambda i: f"{i + 1}. {seq[i][1]}", key=f"bus_stop_{city}_{route}_{si}")
+    if ki is None:
+        return
+    item = {"city": city, "route": route, "sub": subs[si]["sub"], "dir": subs[si]["dir"], "stop": seq[ki][0],
+            "name": seq[ki][1], "to": TD.headsign(subs[si]["name"], seq)}
+    have = any((f["stop"], f["route"], f.get("sub")) == (item["stop"], item["route"], item["sub"]) for f in favs)
+    if st.button("★ 已在常用" if have else "☆ 加入常用", disabled=have, type="primary"):
+        U.remember("bus_favs", favs + [item])
+        st.rerun()
 
 
 # ═════════ 導覽 ═════════
@@ -1249,6 +1372,7 @@ PAGES = {
     "alerts": st.Page(V.page_alerts, title="防災資訊", icon="⚠️", url_path="alerts"),
     "holidays": st.Page(V.page_holidays, title="假日行事曆", icon="📅", url_path="holidays"),
     "parking": st.Page(V.page_parking, title="停車", icon="🅿️", url_path="parking"),
+    "bus": st.Page(page_bus, title="公車", icon="🚌", url_path="bus"),
     "stock": st.Page(page_stock, title="股票", icon="📈", url_path="stock"),
     "fx": st.Page(page_fx, title="匯率", icon="💱", url_path="fx"),
     "oil": st.Page(page_oil, title="油價", icon="⛽", url_path="oil"),
@@ -1266,7 +1390,7 @@ PAGES = {
 }
 U.HOME_PAGE = PAGES["home"]
 _G = lambda *ks: [PAGES[k] for k in ks]  # noqa: E731
-nav = st.navigation({"": _G("home"), "生活": _G("weather", "alerts", "holidays", "parking"),
+nav = st.navigation({"": _G("home"), "生活": _G("weather", "alerts", "holidays", "bus", "parking"),
                      "理財": _G("stock", "fx", "oil", "invoice", "shop"),
                      "娛樂": _G("movies", "wheel", "bingo", "lotto", "advisor"),
                      "工具": _G("split", "tools", "photo", "settings")}, position="top")

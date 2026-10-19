@@ -552,6 +552,98 @@ def watchlist_view():
         show()
 
 
+FEE_RATE, FEE_MIN = 0.001425, 20       # 券商手續費（未打折）0.1425%，最低 20 元
+
+
+def sell_cost(code, value):
+    """賣出要付的錢：手續費＋證交稅（ETF 0.1%、一般股票 0.3%）。"""
+    if value <= 0:
+        return 0.0
+    tax = 0.001 if str(code).startswith("00") else 0.003
+    return max(value * FEE_RATE, FEE_MIN) + value * tax
+
+
+def portfolio(holdings, q, net=False):
+    """持股 + 報價 → (每一檔的明細, 合計)。net=True 時未實現損益會扣掉賣出的手續費和證交稅。"""
+    rows, tot = [], {"市值": 0.0, "成本": 0.0, "今日": 0.0, "損益": 0.0, "缺報價": 0}
+    for h in holdings:
+        c, sh, cost = h["code"], float(h.get("shares") or 0), float(h.get("cost") or 0)
+        x = q.get(c)
+        if not x or not x.get("price"):
+            tot["缺報價"] += 1
+            rows.append({"代號": c, "名稱": K.STOCK_ZH.get(c, ""), "股數": sh, "成本": cost, "現價": None, "市值": None,
+                         "今日損益": None, "未實現損益": None, "報酬率%": None})
+            continue
+        price, prev = x["price"], x.get("prev") or x["price"]
+        value, basis = price * sh, cost * sh
+        pnl = value - basis - (sell_cost(c, value) if net else 0)
+        today = (price - prev) * sh
+        tot["市值"] += value
+        tot["成本"] += basis
+        tot["今日"] += today
+        tot["損益"] += pnl
+        rows.append({"代號": c, "名稱": x.get("name") or K.STOCK_ZH.get(c, ""), "股數": sh, "成本": cost, "現價": price,
+                     "市值": round(value), "今日損益": round(today), "未實現損益": round(pnl),
+                     "報酬率%": round(pnl / basis * 100, 2) if basis else None})
+    return rows, tot
+
+
+def holdings_view():
+    """💼 我的持股：輸入股數和平均成本，自動算市值、今日損益、未實現損益、報酬率（資料只存在你的瀏覽器）。"""
+    hold = list(U.pref("holdings", []))
+    st.caption("輸入代號、股數（1 張 = 1000 股）和平均成本（每股買進價），按表格下方的「＋」新增一列；選取列後按刪除鍵可以刪掉。")
+    df = pd.DataFrame(hold or [{"code": "0050", "shares": 0, "cost": 0.0}], columns=["code", "shares", "cost"])
+    ed = st.data_editor(df, num_rows="dynamic", key=f"hold_{U.rev()}", hide_index=True, width="stretch",
+                        column_config={"code": st.column_config.TextColumn("代號", required=True, max_chars=8),
+                                       "shares": st.column_config.NumberColumn("股數", min_value=0, step=1, format="%d"),
+                                       "cost": st.column_config.NumberColumn("平均成本", min_value=0.0, step=0.01, format="%.2f")})
+    clean = []
+    for _, r in ed.iterrows():
+        c = str(r.get("code") or "").strip().upper()
+        try:
+            sh, cost = float(r.get("shares") or 0), float(r.get("cost") or 0)
+        except (TypeError, ValueError):
+            continue
+        if CODE_RE.fullmatch(c) and sh > 0:
+            clean.append({"code": c, "shares": sh, "cost": cost})
+    U.remember("holdings", clean)
+    if not clean:
+        st.info("填上代號、股數和平均成本，就會算出損益。")
+        return
+    net = st.toggle("扣掉賣出時的手續費和證交稅（算出真正入袋的損益）", key="hold_net",
+                    help=f"手續費 {FEE_RATE * 100:.4f}%（最低 {FEE_MIN} 元，沒算券商折扣）＋證交稅：ETF 0.1%、股票 0.3%")
+    auto = st.toggle("⏱️ 盤中自動更新(30 秒)", key="hold_auto")
+
+    def show():
+        q = U.quiet(quotes, tuple(dict.fromkeys(h["code"] for h in clean))) or {}
+        rows, t = portfolio(clean, q, net)
+        rate = t["損益"] / t["成本"] * 100 if t["成本"] else 0
+        cls = lambda v: "up" if v > 0 else "down" if v < 0 else "flat"  # noqa: E731
+        st.markdown(
+            "<div class='tiles'>"
+            f"<div class='tile'><span class='tl'>💼 總市值</span><span class='tv'>{t['市值']:,.0f}</span>"
+            f"<span class='ts'>成本 {t['成本']:,.0f}</span></div>"
+            f"<div class='tile'><span class='tl'>{'💰 入袋損益' if net else '💰 未實現損益'}</span>"
+            f"<span class='tv {cls(t['損益'])}'>{t['損益']:+,.0f}</span><span class='ts {cls(t['損益'])}'>{rate:+.2f}%</span></div>"
+            f"<div class='tile'><span class='tl'>📅 今日損益</span><span class='tv {cls(t['今日'])}'>{t['今日']:+,.0f}</span>"
+            f"<span class='ts'>跟昨天收盤比</span></div></div>", unsafe_allow_html=True)
+        table = pd.DataFrame(rows)
+        st.dataframe(table.style.map(lambda v: "color:#e5484d" if isinstance(v, (int, float)) and v > 0 else
+                                     ("color:#1f9d55" if isinstance(v, (int, float)) and v < 0 else ""),
+                                     subset=["今日損益", "未實現損益", "報酬率%"])
+                     .format({"股數": "{:,.0f}", "成本": "{:,.2f}", "現價": "{:,.2f}", "市值": "{:,.0f}", "今日損益": "{:+,.0f}",
+                              "未實現損益": "{:+,.0f}", "報酬率%": "{:+.2f}"}, na_rep="—"),
+                     hide_index=True, width="stretch")
+        if t["缺報價"]:
+            st.caption(f"⚠️ 有 {t['缺報價']} 檔查不到報價，沒有算進合計。")
+        st.caption(f"漲紅跌綠・查詢 {K.tw_now():%H:%M:%S}・沒有算股利和券商手續費折扣，實際以券商對帳單為準")
+
+    if auto:
+        st.fragment(run_every=30)(show)()
+    else:
+        show()
+
+
 def dividends_view():
     dv = safe(dividends)
     if dv is None:

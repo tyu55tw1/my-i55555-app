@@ -174,6 +174,9 @@ def parse_aqi(j) -> list[dict]:
 def fetch_aqi() -> list[dict]:
     key = _secret("MOENV_API_KEY") or MOENV_PUBLIC_KEY
     r = K.http_get(AQI_URL, timeout=(6, 25), params={"api_key": key, "limit": 1000, "format": "JSON"})
+    if "呼叫API的次數" in r.text[:200]:   # 環境部回傳文字而不是 JSON：這把金鑰今天的額度用完了
+        raise RuntimeError("環境部 API 今天的呼叫次數用完了" + ("" if _secret("MOENV_API_KEY") else
+                           "（目前用的是大家共用的示範金鑰，請到 Secrets 設定自己的 MOENV_API_KEY）"))
     data = parse_aqi(r.json())
     if not data:
         raise ValueError("環境部 AQI 資料為空")
