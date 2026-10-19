@@ -19,6 +19,7 @@ import ui as U
 import views as V
 import wheel as W
 import tdx as TD
+import daily_views as DV
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
@@ -626,9 +627,21 @@ def page_invoice():
     ps = safe(invoices)
     if not ps:
         return
-    t1, t2 = st.tabs(["✍️ 輸入號碼", "📷 掃描 QR Code"])
+    t1, t2, t3 = st.tabs(["✍️ 輸入號碼", "📷 掃描 QR Code", "📒 記帳裡的發票"])
     with t2:
         V.invoice_scan_view(ps)
+    with t3:
+        mine = [x for x in DV.ledger() if x.get("inv")]
+        if not mine:
+            st.info("在「📒 記帳」掃發票記帳後,發票會自動出現在這裡對獎。")
+        else:
+            rows = []
+            for x in sorted(mine, key=lambda x: x["d"], reverse=True):
+                per, res, amt, note = V._check_scanned({"date": datetime.fromisoformat(x["d"]).date(), "number": x["inv"][2:]}, ps)
+                rows.append((x["inv"], x["d"], per, res, amt, note))
+            win = [r for r in rows if r[3].startswith("🎉")]
+            (st.success if win else st.caption)(f"🎉 中了 {len(win)} 張!" if win else f"共 {len(rows)} 張發票,目前沒有中獎")
+            st.dataframe(pd.DataFrame(rows, columns=["發票", "日期", "期別", "結果", "獎金", "說明"]), hide_index=True)
     with t1:
         p = ps[st.selectbox("期別", range(len(ps)), format_func=lambda i: ps[i]["title"])]
         st.caption(f"領獎期間 {p['claim_start']} ~ {p['claim_end']}" + ("  ⚠️ 已過期" if K.tw_now().date().isoformat() > p["claim_end"] else ""))
@@ -1173,7 +1186,8 @@ def page_home():
     codes = tuple(dict.fromkeys(watch + [h["code"] for h in holds]))
     with st.spinner("整理今天的資訊…"):
         got = U.parallel(timeout=8, w=lambda: weather(q), aq=V.aqi, wn=V.cwa_warnings, cl=V.closures, eq=V.earthquakes,
-                         bank=V.bank_rates, oil=oil, qs=lambda: V.quotes(codes), inv=invoices, cal=V.holidays_all)
+                         bank=V.bank_rates, oil=oil, qs=lambda: V.quotes(codes), inv=invoices, cal=V.holidays_all,
+                         out=lambda a=DV.outage_args(): DV.outage_for(today, *a))
     cal = got["cal"] or []
     lw = [x for x in L.long_weekends(cal) if x["end"] >= today] if cal else []
     if lw:
@@ -1197,10 +1211,28 @@ def page_home():
         h, tgt = w.get("hist") or [], w.get("target") or 0
         if h and tgt and h[-1][1] <= tgt:
             alerts.append(("amber", "🛒", f"「{kw_}」降到 ${h[-1][1]:,.0f}({h[-1][2]}),已低於目標價 ${tgt:,.0f}"))
+    for x in DV.due_items(today):
+        c = DV.due_color(x)
+        if c:
+            alerts.append((c, "📅", f"{x['name']}:{DV.due_text(x)}({x['due'].month}/{x['due'].day})"))
+    out = got.get("out")
+    if out:
+        byday = {}
+        for g in out[0]:
+            byday.setdefault(g["date"], []).append(g)
+        for d_, gs in sorted(byday.items()):
+            when = "今天" if d_ == today else "明天" if (d_ - today).days == 1 else f"{d_.month}/{d_.day}"
+            span = f"{min(g['start'] for g in gs)}~{max(g['end'] for g in gs)}"
+            alerts.append(("amber", "⚡", f"{when} {span} 你這區有 {len(gs)} 處計畫停電"))
+        for w in out[1][:3]:
+            alerts.append(("amber", "💧", f"{w['start']:%m/%d %H:%M} 起停水:{w['area'][:60]}"))
     if alerts:
         st.markdown("".join(f"<div class='alert {c}'><span>{i}</span><div><b>{_esc(t)}</b></div></div>" for c, i, t in alerts),
                     unsafe_allow_html=True)
-        st.page_link(PAGES["alerts"], label="查看防災資訊 →")
+        a_, b_ = st.columns(2)
+        a_.page_link(PAGES["alerts"], label="查看防災資訊 →")
+        if out and (out[0] or out[1]):
+            b_.page_link(PAGES["outage"], label="停水停電 →")
     elif got["cl"] is not None or got["wn"] is not None:
         st.caption("✅ 目前沒有停班停課與天氣警特報")
 
@@ -1269,6 +1301,20 @@ def page_home():
         rows = [(f"{_esc(f['route'])} <span class='nm'>{_esc(f['name'][:6])}</span>", f"<span class='beta {cls}'>{_esc(t_)}</span>")
                 for f, cls, t_ in bus_fav_eta(bfavs[:4])]
         tiles.insert(0, ("bus", _tile("🚌 公車常用站", "", f"{now:%H:%M} 即時到站", rows)))
+    gf = U.pref("garbage_fav")
+    if gf:
+        when, badge = DV.garbage_next_text(gf, now)
+        tiles.insert(0, ("garbage", _tile("🗑️ 垃圾車", when, f"{_esc(gf['name'][:14])}<br>{badge}", small=True)))
+    dl = DV.due_items(today)
+    if dl:
+        rows = [(_esc(x["name"][:12]), f"<b style='color:{'#d63a3a' if DV.due_color(x) == 'red' else '#d6a400' if DV.due_color(x) else 'inherit'}'>"
+                 f"{DV.due_text(x).replace('還剩 ', '')}</b>") for x in dl[:3]]
+        tiles.append(("dues", _tile("📅 繳費提醒", "", f"共 {len(dl)} 項", rows)))
+    led, subs = DV.ledger(), U.pref("subs", [])
+    if led or subs:
+        ym = today.strftime("%Y-%m")
+        tiles.append(("ledger", _tile("📒 本月花費", f"{DV.month_total(led, ym):,.0f} 元",
+                                      f"今天 {DV.month_total(led, today.isoformat()):,.0f} 元・訂閱 {DV.D.month_sub_cost(subs):,.0f} 元/月")))
     dd, period = _next_invoice_draw(today)
     inv = got["inv"]
     latest = inv[0]["title"] if inv else ""
@@ -1278,7 +1324,8 @@ def page_home():
     tiles.append(("movies", _tile("🎬 電影", "現在能看什麼?", f"常去戲院 {len(favs)} 間" if favs else "可在電影頁設定常去戲院",
                                   small=True)))
     link_text = {"bus": "公車 →", "weather": "天氣・空氣 →", "holidays": "假日行事曆 →", "stock": "股票 →", "fx": "匯率 →", "oil": "油價 →",
-                 "invoice": "發票對獎 →", "movies": "電影時刻 →"}
+                 "invoice": "發票對獎 →", "movies": "電影時刻 →",
+                 "garbage": "垃圾車 →", "dues": "繳費提醒 →", "ledger": "記帳 →"}
     for i in range(0, len(tiles), 4):
         for j, (col, (pg, html)) in enumerate(zip(st.columns(4), tiles[i:i + 4])):
             with col, st.container(key=f"tile_{i + j}_{pg}"):  # 整張卡片都可以點
@@ -1287,10 +1334,13 @@ def page_home():
                 st.page_link(PAGES[pg], label=link_text[pg])
 
     st.markdown("##### 🧰 小工具")
-    tools = [("split", "聚餐分帳"), ("tools", "換算・計時"), ("parking", "找停車位"), ("wheel", "幸運轉盤"), ("shop", "比價"), ("photo", "大頭照")]
-    for col, (k, lab) in zip(st.columns(6), tools):
-        with col:
-            st.page_link(PAGES[k], label=lab)
+    tools = [("food", "今天吃什麼"), ("ledger", "記帳"), ("dues", "繳費提醒"), ("garbage", "垃圾車"), ("outage", "停水停電"),
+             ("freeway", "國道路況"), ("fuel", "加油・充電"), ("split", "聚餐分帳"), ("tools", "換算・計時"), ("parking", "找停車位"),
+             ("wheel", "幸運轉盤"), ("shop", "比價"), ("photo", "大頭照")]
+    for i in range(0, len(tools), 7):
+        for col, (k, lab) in zip(st.columns(7), tools[i:i + 7]):
+            with col:
+                st.page_link(PAGES[k], label=lab)
 
 
 def page_settings():
@@ -1421,12 +1471,19 @@ PAGES = {
     "tools": st.Page(V.page_tools, title="換算・BMI・計時", icon="📐", url_path="tools"),
     "photo": st.Page(page_photo, title="大頭照", icon="📸", url_path="photo"),
     "settings": st.Page(page_settings, title="設定與診斷", icon="⚙️", url_path="settings"),
+    "garbage": st.Page(DV.page_garbage, title="垃圾車", icon="🗑️", url_path="garbage"),
+    "outage": st.Page(DV.page_outage, title="停水停電", icon="🚱", url_path="outage"),
+    "freeway": st.Page(DV.page_freeway, title="國道路況", icon="🚗", url_path="freeway"),
+    "food": st.Page(DV.page_food, title="今天吃什麼", icon="🍱", url_path="food"),
+    "fuel": st.Page(DV.page_fuel, title="加油・充電", icon="⛽", url_path="fuel"),
+    "ledger": st.Page(DV.page_ledger, title="記帳", icon="📒", url_path="ledger"),
+    "dues": st.Page(DV.page_dues, title="繳費提醒", icon="📅", url_path="dues"),
 }
 U.HOME_PAGE = PAGES["home"]
 _G = lambda *ks: [PAGES[k] for k in ks]  # noqa: E731
-nav = st.navigation({"": _G("home"), "生活": _G("weather", "alerts", "holidays", "bus", "parking"),
-                     "理財": _G("stock", "fx", "oil", "invoice", "shop"),
-                     "娛樂": _G("movies", "wheel", "bingo", "lotto", "advisor"),
+nav = st.navigation({"": _G("home"), "生活": _G("weather", "alerts", "outage", "garbage", "holidays", "bus", "freeway", "parking", "fuel"),
+                     "理財": _G("ledger", "dues", "stock", "fx", "oil", "invoice", "shop"),
+                     "娛樂": _G("food", "movies", "wheel", "bingo", "lotto", "advisor"),
                      "工具": _G("split", "tools", "photo", "settings")}, position="top")
 nav.run()
 
