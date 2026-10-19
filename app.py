@@ -701,9 +701,43 @@ def page_bingo():
     st.caption("⚠️ 每期開獎互相獨立,熱門/冷門/遺漏值都無法預測下一期,請理性遊玩。")
 
 
+BINGO_SUG = max(range(1, 11), key=lambda s: K.bingo_odds(s)["rtp"])   # 平均拿回最多的星數(9 星)
+BINGO_FREQ = max(range(1, 11), key=lambda s: K.bingo_odds(s)["win"])  # 最常中獎的星數(2 星)
+
+
+def lotto_suggest():
+    """每種玩法一張卡片:一組建議號碼 + 單注中獎機率、頭獎機率、平均拿回。"""
+    games = [("賓果", BINGO_SUG), ("今彩539", 0), ("大樂透", 0), ("威力彩", 0)]
+    new = st.button("🔄 換一組號碼", key="lotto_sug_new")
+    if new or "lotto_sug" not in st.session_state:
+        st.session_state["lotto_sug"] = {g: K.advisor_tickets(g, s, 1)[0] for g, s in games}
+    sug = st.session_state["lotto_sug"]
+    row = "<div style='display:flex;justify-content:space-between;gap:8px;font-size:.88rem'><span style='opacity:.75'>{}</span><b>{}</b></div>"
+    cards = []
+    for g, s in games:
+        r, t = K.plan_stats(g, s, 1, dp=False), sug[g]
+        p = r["p_any1"]
+        rows = [("中獎", f"{p * 100:.1f}%(1/{1 / p:.0f})"),
+                ("頭獎" if g != "賓果" else "全中", K.fmt_prob(r["p_top1"]).split("(")[0]),
+                ("平均拿回", f"{r['ev_each']:.0f} / {r['price']} 元")]
+        note = ""
+        if g == "賓果":
+            note = (f"<div style='font-size:.78rem;opacity:.7'>想常中:改選 {BINGO_FREQ} 星,"
+                    f"中獎 {K.bingo_odds(BINGO_FREQ)['win'] * 100:.0f}%</div>")
+        title = f"🎰 賓果 {s} 星" if g == "賓果" else ("🎱 " + g)
+        cards.append(f"<div class='tile' style='min-height:0'><span class='tl'><b>{title}</b>　{r['price']} 元</span>"
+                     f"<div style='margin:4px 0'>{balls(t['nums'], t.get('second'))}</div>"
+                     + "".join(row.format(a, b) for a, b in rows) + note + "</div>")
+    st.markdown("<div class='tiles'>" + "".join(cards) + "</div>", unsafe_allow_html=True)
+    st.caption("「中獎」= 買 1 注中任何一個獎的機率，「平均拿回」= 長期平均每注拿回多少錢。號碼只是先幫你選好,每一組號碼被開出的機率都一樣;"
+               f"大樂透、威力彩用「避開大眾選號」,中頭獎時比較不用跟別人分。賓果建議 {BINGO_SUG} 星是因為長期平均拿回最多。")
+
+
 def page_lotto():
     hero("🏆", "樂透選號", "大樂透・威力彩・今彩539 —— 精確機率與選號工具")
-    t1, t2 = st.tabs(["🎲 產生號碼", "📊 機率與複式試算"])
+    t0, t1, t2 = st.tabs(["🎯 建議號碼", "🎲 產生號碼", "📊 機率與複式試算"])
+    with t0:
+        lotto_suggest()
     notes = {"anti": "不提高中獎機率,只避開生日號、連號、等差直線,中浮動獎金時較不易分獎。", "random": "每組號碼被開出的機率完全相同。", "structure": "和值/AC值/奇偶等只是民間說法,統計上沒有優勢。"}
     with t1:
         c1, c2, c3 = st.columns(3)
