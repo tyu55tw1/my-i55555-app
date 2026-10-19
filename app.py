@@ -39,7 +39,7 @@ DV.D = _D
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
-VERSION = "v2.4-天氣跟著我家"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
+VERSION = "v2.4.1-修首頁當掉"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
@@ -519,16 +519,28 @@ def page_weather():
         V.aqi_view()
 
 
+def my_county() -> str:
+    """沒自己選過縣市時用:「我家」或定位的位置 → 最近的縣市中心;都沒有就台北。
+    (寫在 app.py:雲端自動更新只會重跑 app.py,寫在 ui.py 的新函式在 Reboot 前會找不到)"""
+    pos = U.pref("home_loc") or st.session_state.get("geo_pos")
+    if pos:
+        return min(L.COUNTY_XY, key=lambda c: L.haversine(pos[0], pos[1], *L.COUNTY_XY[c]))
+    return "臺北市"
+
+
+U.my_county = my_county   # views.py 的空氣品質頁也用這個
+
+
 def my_city() -> str:
     """天氣用的城市:自己在天氣頁選過就用選的,不然跟著「我家」所在的縣市。"""
     if U.pref("city_set") and U.pref("city") in CITIES:
         return U.pref("city")
-    c = U.my_county().replace("臺", "台").rstrip("市縣")
+    c = my_county().replace("臺", "台").rstrip("市縣")
     return c if c in CITIES else "台北"
 
 
 def my_aqi_county() -> str:
-    return U.pref("aqi_county") if U.pref("aqi_set") and U.pref("aqi_county") else U.my_county()
+    return U.pref("aqi_county") if U.pref("aqi_set") and U.pref("aqi_county") else my_county()
 
 
 def weather_view():

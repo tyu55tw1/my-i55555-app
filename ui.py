@@ -161,15 +161,6 @@ def prefs_sync():
                 st.rerun()
 
 
-def my_county() -> str:
-    """沒自己選過縣市時用:「我家」或定位的位置 → 最近的縣市中心;都沒有就台北。"""
-    import life as L
-    pos = pref("home_loc") or st.session_state.get("geo_pos")
-    if pos:
-        return min(L.COUNTY_XY, key=lambda c: L.haversine(pos[0], pos[1], *L.COUNTY_XY[c]))
-    return "臺北市"
-
-
 def geolocate(key="geo", label="📍 用我的位置"):
     """顯示定位按鈕;回傳 (lat, lon) 或 None。位置存在 session_state,換頁也還在。"""
     if _geo is None:
