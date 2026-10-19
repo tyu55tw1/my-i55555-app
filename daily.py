@@ -16,6 +16,9 @@ from datetime import date, datetime, timedelta
 import core as K
 import life as L
 
+import time as _time
+
+LOADED_AT = _time.time()   # app.py 用來判斷檔案更新後要不要重新載入
 UA = {"User-Agent": "lifeapp/1.0 (personal use)"}
 WD = "一二三四五六日"
 COUNTIES = list(L.COUNTY_XY)

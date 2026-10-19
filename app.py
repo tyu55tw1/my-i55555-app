@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧰 全方位生活助手 — Streamlit 版。  執行:streamlit run app.py"""
 import io
+import os
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -20,10 +21,25 @@ import views as V
 import wheel as W
 import tdx as TD
 import daily_views as DV
+import daily as _D
+
+
+def _fresh(mod):
+    """雲端自動更新時只會重跑 app.py,import 進來的檔案還是舊的;檔案比載入時間新就重新載入。"""
+    import importlib
+    import os
+    if getattr(mod, "LOADED_AT", 0) < os.path.getmtime(mod.__file__):
+        mod = importlib.reload(mod)
+    return mod
+
+
+_D = _fresh(_D)
+DV = _fresh(DV)
+DV.D = _D
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
-VERSION = "v2.1-店家改用Photon"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
+VERSION = "v2.2-自動重讀更新"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}

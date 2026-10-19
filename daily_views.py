@@ -19,6 +19,7 @@ import wheel as W
 from ui import _esc, hero
 
 WD = D.WD
+LOADED_AT = __import__("time").time()   # app.py 用來判斷檔案更新後要不要重新載入
 
 # ── 快取包裝 ──
 garbage_c = st.cache_data(ttl=86400, show_spinner="下載垃圾車清運點(每天第一次約 10 秒)…")(D.fetch_garbage)
