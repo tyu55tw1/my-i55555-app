@@ -325,42 +325,77 @@ def page_food():
     if not loc:
         return
     c1, c2 = st.columns(2)
-    radius = c1.select_slider("範圍", [300, 500, 800, 1200, 2000], U.pref("food_r", 800), format_func=lambda m: f"{m} 公尺")
+    radii = [300, 500, 800, 1200, 2000, 5000, 8000]
+    pr = U.pref("food_r", 800)
+    radius = c1.select_slider("範圍", radii, pr if pr in radii else 800, format_func=lambda m: f"{m} 公尺" if m < 1000 else f"{m / 1000:g} 公里")
     U.remember("food_r", radius)
     n = c2.slider("轉盤放幾家", 4, 16, 10)
     kinds = st.pills("種類", list(D.FOOD_KIND), default=["restaurant", "fast_food", "cafe", "food_court"],
                      format_func=D.FOOD_KIND.get, selection_mode="multi")
+    mine = [x.strip() for x in U.pref("food_mine", []) if str(x).strip()]
+    with st.expander(f"⭐ 我常吃的店({len(mine)})— 自己加的店每次都會放上轉盤"):
+        txt = st.text_area("每行一家", "\n".join(mine), height=120, placeholder="例如:\n巷口麵店\n阿嬤便當\n樓下早餐店",
+                           key=f"food_mine_{U.rev()}")
+        if st.button("💾 儲存", key="food_mine_save"):
+            U.remember("food_mine", [x.strip()[:30] for x in txt.splitlines() if x.strip()][:40])
+            st.session_state.pop("food_sig", None)
+            st.rerun()
+    block = set(U.pref("food_block", []))
+
+    def nearby(r_):
+        rows_ = food_c(round(loc[0], 3), round(loc[1], 3), r_)
+        rows_ = [r for r in rows_ if r["kind"] in (kinds or list(D.FOOD_KIND)) and r["name"] not in block]
+        seen = set()
+        return [r for r in rows_ if not (r["name"] in seen or seen.add(r["name"]))]   # 同名分店只留最近的
+
     try:
-        rows = food_c(round(loc[0], 3), round(loc[1], 3), radius)
+        used, rows = radius, nearby(radius)
+        for bigger in (2000, 5000, 8000):   # 附近登錄的店太少(郊區常見):自動放大範圍
+            if len(rows) >= 8 or bigger <= used:
+                continue
+            used, rows = bigger, nearby(bigger)
     except Exception as e:  # noqa: BLE001
         st.warning(f"😵 {e}")
+        rows, used = [], radius
+    gsearch = f"https://www.google.com/maps/search/{quote('餐廳')}/@{loc[0]:.6f},{loc[1]:.6f},15z"
+    if used > radius:
+        st.info(f"附近 {radius} 公尺內登錄的店家太少,已自動放大到 {used / 1000:g} 公里。"
+                "郊區在 OpenStreetMap 上的店家常常不齊,可以在上面「⭐ 我常吃的店」自己加。")
+    mine_rows = [{"name": m, "kind": "mine", "dist": None, "lat": None, "lon": None, "cuisine": "", "hours": ""}
+                 for m in mine if m not in block]
+    pool_all = mine_rows + [r for r in rows if r["name"] not in set(mine)]
+    if not pool_all:
+        st.info("這附近找不到店家資料。可以在「⭐ 我常吃的店」自己加,或用 Google 地圖找。")
+        st.link_button("🗺️ 用 Google 地圖找附近餐廳", gsearch)
         return
-    rows = [r for r in rows if r["kind"] in (kinds or list(D.FOOD_KIND))]
-    seen = set()
-    rows = [r for r in rows if not (r["name"] in seen or seen.add(r["name"]))]   # 同名分店只留最近的
-    block = set(U.pref("food_block", []))
-    rows = [r for r in rows if r["name"] not in block]
-    if not rows:
-        st.info("這個範圍找不到店家,把範圍放大或多選幾種。")
-        return
-    sig = (round(loc[0], 3), round(loc[1], 3), radius, tuple(sorted(kinds or [])), n)
+    sig = (round(loc[0], 3), round(loc[1], 3), radius, tuple(sorted(kinds or [])), n, tuple(mine))
     again = st.button("🔄 換一批店", key="food_new")
     if st.session_state.get("food_sig") != sig or again:
         st.session_state["food_sig"] = sig
-        pool = rows[:]
-        random.shuffle(pool)
-        st.session_state["food_pick"] = [r["name"] for r in pool[:n]]
-    picked = [r for r in rows if r["name"] in set(st.session_state.get("food_pick", []))][:n]
-    st.caption(f"範圍內 {len(rows)} 家,隨機挑 {len(picked)} 家放上轉盤。點轉盤就會轉。")
+        others = [r for r in pool_all if r["kind"] != "mine"]
+        random.shuffle(others)
+        st.session_state["food_pick"] = [r["name"] for r in (mine_rows + others)[:max(n, len(mine_rows))]]
+    want = st.session_state.get("food_pick", [])
+    by_name = {r["name"]: r for r in pool_all}
+    picked = [by_name[x] for x in want if x in by_name]
+    st.caption(f"找到 {len(rows)} 家" + (f"+ 我常吃的 {len(mine_rows)} 家" if mine_rows else "") +
+               f",轉盤上放 {len(picked)} 家。點轉盤就會轉。")
     components_html(W.wheel_html([(r["name"], 1) for r in picked]), height=760, scrolling=True)
+    st.link_button("🗺️ 用 Google 地圖找附近餐廳(店家比較齊)", gsearch)
     st.markdown("##### 轉盤上的店")
     for i, r in enumerate(picked):
         a, b = st.columns([6, 1], vertical_alignment="center")
-        extra = "・".join(x for x in (D.cuisine_zh(r["cuisine"]), D.hours_zh(r["hours"]) and "🕒 " + D.hours_zh(r["hours"])) if x)
-        a.markdown(f"<div class='card'><div class='ct'>{_esc(r['name'])}</div><div class='cs'>{D.FOOD_KIND.get(r['kind'], '')}"
-                   f"・{r['dist'] * 1000:.0f} 公尺{('・' + _esc(extra)) if extra else ''}　"
-                   f"<a href='{_gmap(r['name'], r['lat'], r['lon'])}' target='_blank'>🗺️ 地圖・評價</a></div></div>",
-                   unsafe_allow_html=True)
+        if r["kind"] == "mine":
+            link = f"https://www.google.com/maps/search/{quote(r['name'])}/@{loc[0]:.6f},{loc[1]:.6f},15z"
+            a.markdown(f"<div class='card'><div class='ct'>{_esc(r['name'])}</div><div class='cs'>⭐ 我常吃的　"
+                       f"<a href='{link}' target='_blank'>🗺️ 地圖・評價</a></div></div>", unsafe_allow_html=True)
+        else:
+            extra = "・".join(x for x in (D.cuisine_zh(r["cuisine"]), D.hours_zh(r["hours"]) and "🕒 " + D.hours_zh(r["hours"])) if x)
+            dist = f"{r['dist'] * 1000:.0f} 公尺" if r["dist"] < 1 else f"{r['dist']:.1f} 公里"
+            a.markdown(f"<div class='card'><div class='ct'>{_esc(r['name'])}</div><div class='cs'>{D.FOOD_KIND.get(r['kind'], '')}"
+                       f"・{dist}{('・' + _esc(extra)) if extra else ''}　"
+                       f"<a href='{_gmap(r['name'], r['lat'], r['lon'])}' target='_blank'>🗺️ 地圖・評價</a></div></div>",
+                       unsafe_allow_html=True)
         if b.button("🚫", key=f"food_blk_{i}", help="不想吃這家,以後不放上轉盤"):
             U.remember("food_block", sorted(block | {r["name"]}))
             st.session_state.pop("food_sig", None)
