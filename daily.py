@@ -128,16 +128,31 @@ def near_points(points: list[dict], lat: float, lon: float, radius_km: float = 0
     return out[:limit]
 
 
-def next_visit(p: dict, now: datetime) -> tuple[date, str] | None:
-    """這個清運點下一次收垃圾的日子和時間(今天已經過了就找之後的)。"""
+def next_visit(p: dict, now: datetime, skip: set | None = None) -> tuple[date, str] | None:
+    """這個清運點下一次收垃圾的日子和時間(今天已經過了就找之後的;skip = 停收的日子,例如颱風停班)。"""
     if not p.get("time"):
         return None
     days = set(p.get("garbage") or range(7))
     for off in range(8):
         d = now.date() + timedelta(days=off)
-        if d.weekday() in days and (off or p["time"] >= f"{now:%H:%M}"):
+        if d.weekday() in days and d not in (skip or ()) and (off or p["time"] >= f"{now:%H:%M}"):
             return d, p["time"]
     return None
+
+
+def garbage_stop_days(city: str, closures: list[tuple[str, str]], today: date) -> set[date]:
+    """人事總處停班停課公告 → 這個縣市垃圾車停收的日子。
+    各縣市環保局的慣例:宣布「停止上班」那天垃圾車就停收(只停課不算)。"""
+    city = city.replace("台", "臺")
+    out = set()
+    for name, text in closures or []:
+        if name.replace("台", "臺") != city:
+            continue
+        if "今天停止上班" in text:
+            out.add(today)
+        if "明天停止上班" in text:
+            out.add(today + timedelta(days=1))
+    return out
 
 
 def days_text(days) -> str:

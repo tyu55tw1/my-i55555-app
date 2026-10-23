@@ -34,6 +34,7 @@ food_c = st.cache_data(ttl=86400, show_spinner="搜尋附近的店(OpenStreetMap
 cpc_c = st.cache_data(ttl=86400, show_spinner="讀取中油加油站…")(D.fetch_cpc)
 fuel_osm_c = st.cache_data(ttl=86400, show_spinner="搜尋其他加油站與充電站(OpenStreetMap,約 10~20 秒)…")(D.fetch_fuel_osm)
 oil_c = st.cache_data(ttl=1800, show_spinner=False)(K.fetch_oil)
+closures_c = st.cache_data(ttl=300, show_spinner=False)(L.fetch_closures)
 
 
 def _md(d: date) -> str:
@@ -96,20 +97,32 @@ def _map(rows, me=None, zoom=15, height=300):
 GARBAGE_CITIES = ["臺南市", "臺北市", "新北市", "臺中市"]
 
 
-def garbage_next_text(p, now) -> tuple[str, str]:
-    """→ (下一次的文字, 今天收不收的徽章)"""
+def stop_days(city) -> set:
+    """颱風等停班日 → 垃圾車停收的日子(抓不到公告就當沒有)。"""
+    got = U.safe(closures_c) if city else None
+    return D.garbage_stop_days(city, got[0], K.tw_now().date()) if got else set()
+
+
+def garbage_next_text(p, now, city=None) -> tuple[str, str]:
+    """→ (下一次的文字, 今天收不收的徽章)。city 有給就會參考停班公告(颱風天停收)。"""
     today = now.date()
-    nv = D.next_visit(p, now)
+    stop = stop_days(city or p.get("city") or U.pref("garbage_city", "臺南市"))
+    nv = D.next_visit(p, now, stop)
     when = f"{_when(nv[0], today)} {nv[1]}" if nv else "—"
     wd = today.weekday()
     g_today = wd in set(p.get("garbage") or range(7))
     r_today = wd in set(p.get("recycle") or [])
-    badge = ("<b style='color:#1f9d55'>今天有收</b>" + ("・♻️ 回收" if r_today else "")) if g_today else "<b style='color:#d63a3a'>今天不收</b>"
+    if today in stop and g_today:
+        badge = "<b style='color:#d63a3a'>⛔ 今天停收(停班)</b>"
+    else:
+        badge = ("<b style='color:#1f9d55'>今天有收</b>" + ("・♻️ 回收" if r_today else "")) if g_today else "<b style='color:#d63a3a'>今天不收</b>"
+    if today + timedelta(days=1) in stop and (today + timedelta(days=1)).weekday() in set(p.get("garbage") or range(7)):
+        badge += "・<b style='color:#d63a3a'>明天停收</b>"
     return when, badge
 
 
-def _gcard(p, now, dist=None):
-    when, badge = garbage_next_text(p, now)
+def _gcard(p, now, dist=None, city=None):
+    when, badge = garbage_next_text(p, now, city)
     food = f"・🍲 廚餘 {D.days_text(p['food'])}" if p.get("food") else ""
     d = f"{dist * 1000:.0f} 公尺・" if dist is not None else ""
     memo = f"・{_esc(p['memo'])}" if p.get("memo") else ""
@@ -133,6 +146,11 @@ def page_garbage():
     city = st.segmented_control("縣市", GARBAGE_CITIES, default=saved if saved in GARBAGE_CITIES else "臺南市",
                                 key=f"g_city_{U.rev()}") or saved
     U.remember("garbage_city", city)
+    stop = stop_days(city)
+    if now.date() in stop:
+        st.warning(f"⛔ {city}今天停止上班(人事總處公告),垃圾車通常停收,恢復收運以環保局公告為準。")
+    elif now.date() + timedelta(days=1) in stop:
+        st.warning(f"⛔ {city}明天停止上班,垃圾車明天通常停收。")
     loc = where("garbage")
     if city in D.GARBAGE_SRC:
         radius = st.select_slider("找多遠的清運點", [200, 300, 500, 800, 1200], 500, format_func=lambda m: f"{m} 公尺")
@@ -147,7 +165,7 @@ def page_garbage():
                     _map([{**p, "color": "#d9441a"} for p in near], loc, zoom=16)
                     for i, p in enumerate(near):
                         a, b = st.columns([6, 1], vertical_alignment="center")
-                        a.markdown(_gcard(p, now, p["dist"]), unsafe_allow_html=True)
+                        a.markdown(_gcard(p, now, p["dist"], city), unsafe_allow_html=True)
                         if b.button("⭐", key=f"gfav_{i}", help="設成我的清運點(首頁會顯示下一次幾點來)"):
                             U.remember("garbage_fav", {k: p[k] for k in ("name", "area", "village", "route", "time", "garbage",
                                                                          "recycle", "food", "memo", "lat", "lon")} | {"city": city})
