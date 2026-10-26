@@ -39,7 +39,7 @@ DV.D = _D
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
-VERSION = "v2.5.3-預設城市台南"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
+VERSION = "v2.6.0-拍照比價"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
@@ -1016,9 +1016,67 @@ def shop_watch_view():
         st.caption("每次打開比價頁或按「重新查價」時記錄當天最低到手價;網站不會在背景自動查價。")
 
 
+# ── 📷 拍照比價：用電腦上的 Claude 認商品（只有電腦版有 claude.exe，雲端版不顯示）──
+CLAUDE_EXE = os.path.expanduser(r"~\.local\bin\claude.exe")
+PHOTO_PROMPT = """讀取圖片檔 {name}，認出照片裡要買的商品。
+只輸出一行 JSON，不要其他文字：{{"kw": "拿去台灣購物網站搜尋用的關鍵字（品牌 + 型號，例如「象印 NP-RT18」；看不出型號就寫品牌 + 品名 + 規格）", "name": "一句話說明這是什麼", "sure": true 或 false（型號是否確定）}}
+認不出是什麼商品時：{{"kw": "", "name": "看不出來的原因", "sure": false}}"""
+
+
+@st.cache_data(ttl=86400, show_spinner=False, max_entries=50)
+def photo_to_keyword(data: bytes) -> dict:
+    """照片 → {kw, name, sure}。先縮到 1280px 的 JPEG 再交給 claude.exe -p 讀圖（同一張照片一天內不重問）。"""
+    import subprocess
+    import tempfile
+    from PIL import Image, ImageOps
+    with tempfile.TemporaryDirectory() as d:
+        im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+        im.thumbnail((1280, 1280))
+        im.save(os.path.join(d, "商品.jpg"), quality=88)
+        r = subprocess.run([CLAUDE_EXE, "-p", PHOTO_PROMPT.format(name="商品.jpg"), "--model", "sonnet",
+                            "--allowedTools", "Read", "--max-turns", "4", "--output-format", "text"],
+                           cwd=d, capture_output=True, text=True, encoding="utf-8", timeout=120,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    out = (r.stdout or "").strip()
+    m = __import__("re").search(r"\{.*\}", out, __import__("re").S)
+    if not m:
+        raise RuntimeError(f"Claude 沒有回傳結果：{(out or r.stderr or '')[:200]}")
+    j = json.loads(m.group())
+    return {"kw": str(j.get("kw") or "").strip(), "name": str(j.get("name") or ""), "sure": bool(j.get("sure"))}
+
+
+def shop_photo_view():
+    """拍照或選相簿照片 → 認出商品 → 自動填進搜尋框比價。"""
+    ss = st.session_state
+    with st.expander("📷 拍照比價（拍商品、包裝或型號貼紙）", expanded=bool(ss.get("shop_photo_open"))):
+        f = st.file_uploader("拍照或選照片", type=["jpg", "jpeg", "png", "webp"], key=f"shop_photo_{ss.get('shop_photo_v', 0)}",
+                             label_visibility="collapsed", help="iPhone 點了會問要「拍照」還是「照片圖庫」")
+        if not f:
+            st.caption("拍好後會自動認出商品型號，填進上面的搜尋框比價（大約 10～20 秒）。")
+            return
+        ss["shop_photo_open"] = True
+        st.image(f, width=160)
+        try:
+            with st.spinner("🤖 Claude 正在看這是什麼商品…"):
+                res = photo_to_keyword(f.getvalue())
+        except Exception as e:  # noqa: BLE001
+            st.error(f"認不出來：{e}")
+            return
+        if not res["kw"]:
+            st.warning(f"看不出是什麼商品：{res['name']}。換個角度、拍清楚型號再試一次。")
+            return
+        st.success(f"認出來了：**{res['kw']}**　{res['name']}" + ("" if res["sure"] else "（型號不確定，結果不對可以改上面的關鍵字）"))
+        if ss.get("shop_kw") != res["kw"] and ss.get("_photo_done") != f.file_id:
+            ss["_photo_done"] = f.file_id
+            ss["_photo_kw"] = res["kw"]
+            st.rerun()
+
+
 def page_shop():
     hero("🛒", "聰明比價", "PChome・momo・Yahoo・露天同時比・蝦皮一鍵開啟・同款商品跨平台比價・降價追蹤")
     ss = st.session_state
+    if "_photo_kw" in ss:   # 拍照認出的關鍵字：要在搜尋框建立前放進去
+        ss["shop_kw"], ss["shop_show"] = ss.pop("_photo_kw"), 24
     c1, c2 = st.container(key="shop_search").columns([5, 1])
     kw = c1.text_input("搜尋商品", key="shop_kw", placeholder="例如:羅技 M720、象印 電子鍋、iPhone 16 128G",
                        label_visibility="collapsed").strip()
@@ -1028,6 +1086,8 @@ def page_shop():
     recent = list(U.pref("shop_recent", []))
     if recent:
         st.pills("最近搜尋", recent, key="shop_recent_pick", on_change=_shop_pick_recent, label_visibility="collapsed")
+    if os.path.exists(CLAUDE_EXE):
+        shop_photo_view()
     shop_watch_view()
     with st.expander("⚙️ 平台與篩選"):
         a, b = st.columns(2)
