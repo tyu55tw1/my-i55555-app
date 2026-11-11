@@ -2,12 +2,17 @@
 """共用 UI 工具:樣式、小元件、設定保存(瀏覽器 localStorage)、定位、並行抓取。"""
 from __future__ import annotations
 
+import hashlib
 import html as _html
 import json
 import logging
+import re
+import time
 from concurrent.futures import ThreadPoolExecutor, wait
 
 import streamlit as st
+
+LOADED_AT = time.time()   # app.py 用來判斷檔案更新後要不要重新載入(雲端自動更新只重跑 app.py)
 
 # 首頁在背景執行緒呼叫快取函式時,Streamlit 會警告缺少執行環境;這是預期行為,關掉避免洗版
 logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").setLevel(logging.ERROR)
@@ -105,11 +110,69 @@ button:hover{border-color:#ff6b3d;color:#ff6b3d}
 span{margin-left:.6rem;font-size:.85rem;opacity:.75}
 """
 
+# 選擇畫面裡的方塊格:搜尋框邊打邊篩(在瀏覽器裡做,不用等伺服器),點一格回傳它的編號
+_PICK_JS = """
+export default function(component) {
+  const { data, setTriggerValue, parentElement } = component;
+  const root = parentElement.querySelector(".pk");
+  const sig = JSON.stringify(data || {});
+  if (root.dataset.sig === sig) return;
+  root.dataset.sig = sig;
+  root.innerHTML = "";
+  const labels = (data && data.labels) || [];
+  let q = null;
+  if (data && data.search) {
+    q = document.createElement("input");
+    q.type = "search"; q.className = "q"; q.placeholder = data.ph || "打字搜尋…";
+    root.appendChild(q);
+  }
+  const grid = document.createElement("div");
+  grid.className = "g " + ((data && data.size) || "");
+  const btns = labels.map((t, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = t;
+    if (i === data.cur) b.className = "on";
+    b.onclick = () => { b.classList.add("on"); setTriggerValue("pick", i); };
+    grid.appendChild(b);
+    return b;
+  });
+  const empty = document.createElement("div");
+  empty.className = "empty"; empty.textContent = "找不到符合的選項"; empty.hidden = true;
+  root.appendChild(grid); root.appendChild(empty);
+  if (q) q.oninput = () => {
+    const s = q.value.replace(/\\s+/g, "").toLowerCase();
+    let n = 0;
+    btns.forEach((b, i) => { const ok = !s || labels[i].replace(/\\s+/g, "").toLowerCase().includes(s); b.hidden = !ok; if (ok) n++; });
+    empty.hidden = n > 0;
+  };
+  const on = grid.querySelector(".on");
+  if (on && labels.length > 12) setTimeout(() => on.scrollIntoView({block: "center"}), 50);
+}
+"""
+_PICK_CSS = """
+.pk{color:var(--st-text-color, inherit)}
+.q{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:.65rem .9rem;margin-bottom:.75rem;border-radius:12px;
+  border:1px solid rgba(128,128,128,.45);background:rgba(128,128,128,.08);color:inherit;outline:none}
+.q:focus{border-color:#ff6b3d}
+.g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
+.g.long{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g.xlong{grid-template-columns:minmax(0,1fr)}
+@media (min-width:700px){.g{grid-template-columns:repeat(6,minmax(0,1fr))}.g.long{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .g.xlong{grid-template-columns:repeat(2,minmax(0,1fr))}}
+button{font:inherit;font-size:1rem;font-weight:600;line-height:1.3;min-height:3.2rem;padding:.5rem .45rem;border-radius:14px;cursor:pointer;
+  border:1px solid rgba(128,128,128,.35);background:rgba(128,128,128,.12);color:inherit;word-break:break-word}
+button:hover{border-color:#ff6b3d;color:#ff6b3d}
+button.on,button.on:hover{background:#ff6b3d;border-color:#ff6b3d;color:#fff}
+button[hidden]{display:none}
+.empty{opacity:.7;padding:1rem 0;text-align:center}
+"""
+
 try:
     _bridge = st.components.v2.component("lifeapp_prefs_bridge", js=_BRIDGE_JS)
     _geo = st.components.v2.component("lifeapp_geo", html="<div><button></button><span></span></div>", css=_GEO_CSS, js=_GEO_JS)
+    _picker = st.components.v2.component("lifeapp_picker", html="<div class='pk'></div>", css=_PICK_CSS, js=_PICK_JS)
 except Exception:  # noqa: BLE001  # 舊版 Streamlit 沒有 components.v2:設定只存在這次使用中
-    _bridge = _geo = None
+    _bridge = _geo = _picker = None
 
 
 def prefs() -> dict:
@@ -174,3 +237,94 @@ def geolocate(key="geo", label="📍 用我的位置"):
     if pos and isinstance(pos, dict) and pos.get("lat") is not None:
         st.session_state["geo_pos"] = (float(pos["lat"]), float(pos["lon"]))
     return st.session_state.get("geo_pos")
+
+
+# ════════════════════════════════════════════════════════════════════
+#  選擇器:取代 st.selectbox(iPhone 點下拉會跳鍵盤＋長清單,很難選)
+# ════════════════════════════════════════════════════════════════════
+def _auto_key(prefix, label, labels):
+    return prefix + hashlib.md5(json.dumps([label, labels], ensure_ascii=False).encode()).hexdigest()[:12]
+
+
+def _find(opts, v):
+    for i, o in enumerate(opts):
+        if o == v:
+            return i
+    return None
+
+
+def pick(label, options, index=0, key=None, format_func=str, placeholder=None, search=None,
+         container=None, on_change=None, help=None):
+    """用法跟 st.selectbox 一樣,回傳選到的選項(index=None 且還沒選時回傳 None)。
+
+    畫面上是一顆顯示目前選項的按鈕,點了跳出選擇畫面(st.dialog),選項排成方塊,點一格就選好、關掉回原畫面。
+    選項超過 20 個(或 search=True)時上方有搜尋框,打字即時篩選。值存在 st.session_state[key]。
+    container:要放在 columns 裡就傳 c1(等同原本的 c1.selectbox)。
+    """
+    opts = list(options)
+    labels = [str(format_func(o)) for o in opts]
+    ss = st.session_state
+    if key is None:
+        key = _auto_key("pk_", label, labels)
+    if key not in ss or (ss[key] is not None and _find(opts, ss[key]) is None) or (ss[key] is None and None not in opts and index is not None):
+        ss[key] = None if index is None or not opts else opts[min(index, len(opts) - 1)]
+    val = ss[key]
+    cur = _find(opts, val)
+    box = (container or st).container(gap=None)
+    # Streamlit 的 markdown 外框有 -1rem 下邊距,這裡補回來,標籤才不會被按鈕蓋住
+    box.markdown(f"<p style='font-size:.875rem;margin:0 0 calc(1rem + .3rem);line-height:1.4'>{_esc(label)}</p>", unsafe_allow_html=True)
+    shown = labels[cur] if cur is not None else (placeholder or "請選擇…")
+    # 按鈕文字會被當 Markdown(例如「2. 自立路」會變成編號清單只剩「自立路」),標點符號都跳脫
+    shown = re.sub(r"([!-/:-@\[-`{-~])", r"\\\1", shown)
+    if box.button(f"{shown}　▾", key=f"pkb_{key}", width="stretch", help=help, disabled=not opts):
+        _pick_dialog(key, label, opts, labels, cur, search, on_change)
+    return val
+
+
+def _pick_dialog(key, label, opts, labels, cur, search, on_change):
+    title = re.sub(r"[（(][^）)]*搜尋[^）)]*[）)]", "", label).strip() or "請選擇"
+    many = search if search is not None else len(opts) > 20
+    longest = max((len(x) for x in labels), default=0)
+    size = "xlong" if longest > 14 else "long" if longest > 5 else ""
+
+    def body():
+        if _picker is None:   # 沒有 components.v2:退回一般按鈕
+            for i, t in enumerate(labels):
+                if st.button(t, key=f"pkf_{key}_{i}", width="stretch", type="primary" if i == cur else "secondary"):
+                    _set(i)
+            return
+        res = _picker(key=f"pkc_{key}", data={"labels": labels, "cur": -1 if cur is None else cur, "search": bool(many),
+                                               "ph": "打字搜尋…", "size": size}, on_pick_change=lambda: None)
+        i = getattr(res, "pick", None)
+        if isinstance(i, int) and 0 <= i < len(opts):
+            _set(i)
+
+    def _set(i):
+        st.session_state[key] = opts[i]
+        if on_change:
+            on_change()
+        st.rerun()
+
+    st.dialog(title, width="large")(body)()
+
+
+def seg(label, options, index=0, key=None, format_func=str, container=None):
+    """只有 2~4 個短選項時用:直接排在頁面上的分段按鈕,回傳值跟 st.selectbox 一樣(一定有選一個)。"""
+    opts = list(options)
+    ss = st.session_state
+    if key is None:
+        key = _auto_key("sg_", label, [str(format_func(o)) for o in opts])
+    last = key + "__last"
+    if _find(opts, ss.get(last)) is None:
+        ss[last] = opts[min(index or 0, len(opts) - 1)]
+    if _find(opts, ss.get(key)) is None:
+        ss[key] = ss[last]
+
+    def keep():   # 再點一次已選的那格會變成沒選:改回原本的
+        if ss.get(key) is None:
+            ss[key] = ss[last]
+        else:
+            ss[last] = ss[key]
+
+    v = (container or st).segmented_control(label, opts, key=key, format_func=format_func, on_change=keep)
+    return ss[last] if v is None else v

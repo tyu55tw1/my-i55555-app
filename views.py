@@ -17,6 +17,7 @@ import ui as U
 from ui import _esc, hero, safe
 
 WD = "一二三四五六日"
+LOADED_AT = __import__("time").time()   # app.py 用來判斷檔案更新後要不要重新載入
 
 
 def _md(d: date) -> str:
@@ -156,7 +157,7 @@ def aqi_view():
     if not data:
         st.info("環境部測站資料暫時連不上,改用 Open-Meteo 模式估計值(美國 AQI 標準,僅供參考)。")
         cs = list(L.COUNTY_XY)
-        c = st.selectbox("縣市", cs, key="aqi_fallback_c")
+        c = U.pick("縣市", cs, key="aqi_fallback_c")
         d = safe(aqi_om, *L.COUNTY_XY[c])
         if d:
             st.markdown(aqi_card({"site": c, "aqi": d["aqi"], "pm25": d["pm25"]}, tip=True), unsafe_allow_html=True)
@@ -166,8 +167,8 @@ def aqi_view():
     saved = U.pref("aqi_county") if U.pref("aqi_set") and U.pref("aqi_county") else U.my_county()
     c1, c2 = st.columns([2, 1])
     k = f"aqi_county_{U.rev()}"
-    county = c1.selectbox("縣市", counties, index=counties.index(saved) if saved in counties else 0, key=k,
-                          on_change=lambda: (U.remember("aqi_county", st.session_state[k]), U.remember("aqi_set", True)))
+    county = U.pick("縣市", counties, index=counties.index(saved) if saved in counties else 0, key=k, container=c1,
+                     on_change=lambda: (U.remember("aqi_county", st.session_state[k]), U.remember("aqi_set", True)))
     with c2:
         pos = U.geolocate("geo_aqi", "📍 離我最近的測站")
     if pos:
@@ -201,7 +202,7 @@ def page_parking():
     areas = ["全部"] + sorted({p["area"] for p in desc if p["area"]})
     saved = U.pref("park_area", "全部")
     c1, c2, c3 = st.columns([1.2, 2, 1.3])
-    area = c1.selectbox("行政區", areas, index=areas.index(saved) if saved in areas else 0, key=f"park_area_{U.rev()}")
+    area = U.pick("行政區", areas, index=areas.index(saved) if saved in areas else 0, key=f"park_area_{U.rev()}", container=c1)
     U.remember("park_area", area)
     q = c2.text_input("🔍 搜尋名稱或地址", placeholder="例如:市府、南京東路、101").strip()
     kind = c3.radio("車種", ["汽車", "機車"], horizontal=True)
@@ -210,7 +211,7 @@ def page_parking():
         pos = U.geolocate("geo_park", "📍 找我附近")
     only = c5.toggle("只顯示有空位", True, key="park_only")
     sorts = (["距離最近"] if pos else []) + ["空位最多", "名稱"]
-    sort = c6.selectbox("排序", sorts)
+    sort = U.seg("排序", sorts, container=c6)
     ki = 0 if kind == "汽車" else 1
     rows = []
     for p in desc:
@@ -471,7 +472,7 @@ def page_tools():
         c1, c2 = st.columns([1, 1])
         defaults = {"面積": 30.0, "重量": 1.0, "長度": 170.0, "容量": 1.0, "溫度": 25.0}
         v = c1.number_input("數值", value=defaults[cat], step=1.0, key=f"conv_v_{cat}", format="%.4g")
-        src = c2.selectbox("單位", units, key=f"conv_u_{cat}")
+        src = U.pick("單位", units, key=f"conv_u_{cat}", container=c2)
         tiles = ""
         for u in units:
             if u == src:
@@ -493,7 +494,7 @@ def page_tools():
         info = L.bmi_info(cm, kg)
         base = L.bmr(cm, kg, age, male)
         acts = {"久坐(幾乎不運動)": 1.2, "輕度(每週運動 1~3 天)": 1.375, "中度(每週 3~5 天)": 1.55, "高度(每週 6~7 天)": 1.725}
-        act = st.selectbox("活動量", list(acts), index=1)
+        act = U.pick("活動量", list(acts), index=1)
         tdee = base * acts[act]
         st.markdown(
             f"<div class='tiles'><div class='tile'><span class='tl'>BMI</span><span class='tv' style='color:{info['color']}'>{info['bmi']:.1f}</span>"
@@ -653,7 +654,7 @@ def dividends_view():
     watch = set(U.pref("watch", []))
     c1, c2, c3 = st.columns([1.2, 1.2, 2])
     only = c1.toggle("只看自選股", False)
-    span = c2.selectbox("期間", ["未來 7 天", "未來 30 天", "全部"], index=1)
+    span = U.seg("期間", ["未來 7 天", "未來 30 天", "全部"], index=1, container=c2)
     q = c3.text_input("🔍 代號或名稱", key="div_q").strip()
     lim = {"未來 7 天": 7, "未來 30 天": 30, "全部": 9999}[span]
     rows = [x for x in dv if (x["date"] - today).days <= lim and (not only or x["code"] in watch)
@@ -706,7 +707,7 @@ def bank_view(mid: dict | None):
     saved = U.pref("fx_cur", "USD")
     r_ = U.rev()
     c1, c2, c3 = st.columns([1.4, 1.6, 1.2])
-    cur = c1.selectbox("幣別", codes, index=codes.index(saved) if saved in codes else 0, format_func=fx_label, key=f"bank_cur_{r_}")
+    cur = U.pick("幣別", codes, index=codes.index(saved) if saved in codes else 0, format_func=fx_label, key=f"bank_cur_{r_}", container=c1)
     U.remember("fx_cur", cur)
     buying = c2.radio("我要", ["買外幣(台幣換外幣)", "賣外幣(外幣換回台幣)"], key="bank_dir").startswith("買")
     kinds = [k for k in ("cash", "spot") if k in rates[cur]]

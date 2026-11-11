@@ -217,7 +217,7 @@ def page_outage():
     today = K.tw_now().date()
     c1, c2, c3 = st.columns([1.2, 1, 1.4])
     saved = U.pref("out_county", "臺南市")
-    county = c1.selectbox("縣市", D.COUNTIES, index=D.COUNTIES.index(saved) if saved in D.COUNTIES else 13, key=f"out_c_{U.rev()}")
+    county = U.pick("縣市", D.COUNTIES, index=D.COUNTIES.index(saved) if saved in D.COUNTIES else 13, key=f"out_c_{U.rev()}", container=c1)
     district = c2.text_input("鄉鎮市區", U.pref("out_district", ""), placeholder="例如:永康區", key=f"out_d_{U.rev()}").strip()
     kw = c3.text_input("路名或里名(可空白)", U.pref("out_kw", ""), placeholder="例如:中華路", key=f"out_k_{U.rev()}").strip()
     for k, v in (("out_county", county), ("out_district", district), ("out_kw", kw)):
@@ -275,11 +275,11 @@ def page_freeway():
     roads = sorted({s["road"] for s in sec.values()}, key=_road_order)
     c1, c2 = st.columns(2)
     pr = U.pref("fw_road", "國道1號")
-    road = c1.selectbox("國道", roads, index=roads.index(pr) if pr in roads else 0, key=f"fw_r_{U.rev()}")
+    road = U.pick("國道", roads, index=roads.index(pr) if pr in roads else 0, key=f"fw_r_{U.rev()}", container=c1)
     dirs = sorted({s["dir"] for s in sec.values() if s["road"] == road}, key="SNEW".find)
     pd_ = U.pref("fw_dir", "N")
-    d = c2.selectbox("方向", dirs, index=dirs.index(pd_) if pd_ in dirs else 0, format_func=lambda x: D.DIR_NAME.get(x, x),
-                     key=f"fw_d_{road}_{U.rev()}")
+    d = U.seg("方向", dirs, index=dirs.index(pd_) if pd_ in dirs else 0, format_func=lambda x: D.DIR_NAME.get(x, x),
+              key=f"fw_d_{road}_{U.rev()}", container=c2)
     segs = D.route_sections(sec, road, d)
     if not segs:
         st.info("這個方向沒有路段資料")
@@ -287,10 +287,10 @@ def page_freeway():
     names = [segs[0]["start"]] + [s["end"] for s in segs]
     c3, c4 = st.columns(2)
     pf, pt = U.pref("fw_from"), U.pref("fw_to")
-    i = c3.selectbox("從", range(len(names) - 1), index=names.index(pf) if pf in names[:-1] else 0,
-                     format_func=lambda k: names[k], key=f"fw_f_{road}_{d}_{U.rev()}")
-    j = c4.selectbox("到", range(i + 1, len(names)), format_func=lambda k: names[k],
-                     index=(names.index(pt) - i - 1) if pt in names[i + 1:] else len(names) - i - 2, key=f"fw_t_{road}_{d}_{i}_{U.rev()}")
+    i = U.pick("從", range(len(names) - 1), index=names.index(pf) if pf in names[:-1] else 0, container=c3,
+               format_func=lambda k: names[k], key=f"fw_f_{road}_{d}_{U.rev()}")
+    j = U.pick("到", range(i + 1, len(names)), format_func=lambda k: names[k], container=c4,
+               index=(names.index(pt) - i - 1) if pt in names[i + 1:] else len(names) - i - 2, key=f"fw_t_{road}_{d}_{i}_{U.rev()}")
     for k, v in (("fw_road", road), ("fw_dir", d), ("fw_from", names[i]), ("fw_to", names[j])):
         U.remember(k, v)
     part = segs[i:j]
@@ -563,7 +563,7 @@ def page_ledger():
                 with st.container(border=True):
                     st.markdown(f"**{x['inv']}**　{x['date'] or '—'}　**{x['amount']:,} 元**　賣方統編 {x['seller']}"
                                 + (f"　品項:{_esc(x['item'])}" if x["item"] else ""))
-                    cat = st.selectbox("類別", D.CATS, key=f"led_qc_{k}")
+                    cat = U.pick("類別", D.CATS, key=f"led_qc_{k}")
                     if st.button("➕ 加入記帳", key=f"led_qa_{k}", type="primary"):
                         ok = _add_entry({"d": (x["date"] or today).isoformat(), "amt": x["amount"], "cat": cat,
                                          "note": x["item"], "inv": x["inv"]})
@@ -571,7 +571,7 @@ def page_ledger():
     with t3:
         rows = ledger()
         months = sorted({x["d"][:7] for x in rows} | {today.strftime("%Y-%m")}, reverse=True)
-        ym = st.selectbox("月份", months)
+        ym = U.pick("月份", months)
         mrows = [x for x in rows if x["d"].startswith(ym)]
         subs = list(U.pref("subs", []))
         fixed = D.month_sub_cost(subs)
@@ -620,7 +620,7 @@ def page_ledger():
         a, b = st.columns(2)
         a.metric("每月固定", f"{D.month_sub_cost(subs):,.0f} 元")
         b.metric("一年下來", f"{D.month_sub_cost(subs) * 12:,.0f} 元")
-        p = st.selectbox("快速加入", [None] + SUB_PRESETS, format_func=lambda x: "選常見的訂閱…" if x is None else f"{x[0]}({x[1]} 元/月)")
+        p = U.pick("快速加入", [None] + SUB_PRESETS, format_func=lambda x: "選常見的訂閱…" if x is None else f"{x[0]}({x[1]} 元/月)")
         if p and st.button("➕ 加入", key="sub_add"):
             U.remember("subs", subs + [{"name": p[0], "amt": p[1], "cycle": "每月", "day": today.day, "month": 1}])
             st.rerun()
@@ -699,7 +699,7 @@ def page_dues():
             st.rerun()
     st.divider()
     st.markdown("##### ➕ 新增提醒")
-    p = st.selectbox("常見項目", [None] + D.DUE_PRESETS, format_func=lambda x: "選常見的…(也可以直接在下面自己填)" if x is None else f"{x[0]}:{x[5]}")
+    p = U.pick("常見項目", [None] + D.DUE_PRESETS, format_func=lambda x: "選常見的…(也可以直接在下面自己填)" if x is None else f"{x[0]}:{x[5]}")
     if p and st.button("➕ 加入這個", key="due_preset"):
         U.remember("dues", dues + [{"name": p[0], "kind": p[1], "month": p[2] or 1, "day": p[3], "before": p[4], "note": p[5]}])
         st.rerun()

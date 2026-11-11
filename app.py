@@ -33,13 +33,15 @@ def _fresh(mod):
     return mod
 
 
+U = _fresh(U)   # ui.py 先重載(就地更新,其他檔案 import 的 U 也跟著變新)
+V = _fresh(V)
 _D = _fresh(_D)
 DV = _fresh(DV)
 DV.D = _D
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
-VERSION = "v2.6.0-拍照比價"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
+VERSION = "v2.6.1-下拉改方塊"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
@@ -373,7 +375,7 @@ def page_movies():
     c1, c2, c3 = st.columns([2, 3, 1])
     regions = list(K.REGIONS)
     r0 = U.pref("movie_region")
-    region = c1.selectbox("地區", regions, index=regions.index(r0) if r0 in regions else 0, key=f"mv_region_{U.rev()}")
+    region = U.pick("地區", regions, index=regions.index(r0) if r0 in regions else 0, key=f"mv_region_{U.rev()}", container=c1)
     U.remember("movie_region", region)
     favs = list(U.pref("fav_cinemas", []))
     mode = c2.radio("查詢方式", ["依戲院", "依電影", "⏰ 現在能看什麼"], horizontal=True)
@@ -389,7 +391,7 @@ def page_movies():
                 st.caption(f"沒有戲院名稱含「{flt}」,改用片名篩選各戲院的場次")
             pool = sorted(pool or cs, key=lambda x: x.name not in favs)  # 常去的戲院排最前面
             st.caption(f"符合 {len(pool)} 間戲院" + ("・⭐ = 常去" if favs else ""))
-            c = pool[st.selectbox("戲院", range(len(pool)), format_func=lambda i: ("⭐ " if pool[i].name in favs else "") + pool[i].name)]
+            c = pool[U.pick("戲院", range(len(pool)), format_func=lambda i: ("⭐ " if pool[i].name in favs else "") + pool[i].name, search=len(pool) > 12)]
             is_fav = c.name in favs
             if st.button("★ 取消常去" if is_fav else "⭐ 設為常去戲院", key="fav_btn",
                          help="常去的戲院會排在最前面,「現在能看什麼」也會預設只看它們"):
@@ -449,7 +451,7 @@ def page_movies():
                         st.info("這個地區目前沒有場次資料")
                     else:
                         st.caption(f"符合 {len(films)} 部電影")
-                        f = films[st.selectbox("電影", range(len(films)), format_func=lambda i: f"{films[i].title}({len(films[i].by_cinema)}間)")]
+                        f = films[U.pick("電影", range(len(films)), format_func=lambda i: f"{films[i].title}({len(films[i].by_cinema)}間)", search=len(films) > 12)]
                         poster = poster_uris([f])[f.film_id]
                         meta = film_meta(f.rating, f.duration)
                         st.markdown(card_html(f"🎞️ {f.title}", f.url, meta, f"<a class='tk' href='{_esc(f.url)}' target='_blank'>📄 電影介紹</a>", poster), unsafe_allow_html=True)
@@ -548,8 +550,8 @@ def weather_view():
     c1, c2 = st.columns([1, 2])
     p0 = my_city()
     k = f"wx_city_{U.rev()}"
-    pick = c1.selectbox("快速選城市", list(cities), index=list(cities).index(p0) if p0 in cities else 0, key=k,
-                        on_change=lambda: (U.remember("city", st.session_state[k]), U.remember("city_set", True)))
+    pick = U.pick("快速選城市", list(cities), index=list(cities).index(p0) if p0 in cities else 0, key=k, container=c1,
+                   on_change=lambda: (U.remember("city", st.session_state[k]), U.remember("city_set", True)))
     q = c2.text_input("或輸入任何城市(英文名)", cities[pick] or U.pref("city_q", "Tokyo"), key=f"wx_q_{pick}_{U.rev()}").strip() or "Taipei"
     if not cities[pick]:
         U.remember("city_q", q)
@@ -600,7 +602,7 @@ def stock_detail():
     quick = {"自行輸入": "", "0050 元大台灣50": "0050", "0056 元大高股息": "0056", "00878 國泰永續高股息": "00878",
              "2330 台積電": "2330", "2317 鴻海": "2317", "2454 聯發科": "2454"}
     c1, c2, c3 = st.columns([2, 1, 2])
-    qk = c1.selectbox("常用", list(quick))
+    qk = U.pick("常用", list(quick), container=c1)
     code = c2.text_input("代號", quick[qk] or "0050").strip()
     rng = c3.radio("區間", list(K.STOCK_RANGES), horizontal=True, index=1)
     auto = st.toggle("⏱️ 自動更新(30 秒)", key="stock_auto") if hasattr(st, "toggle") else False
@@ -654,7 +656,7 @@ def fx_mid_view(d):
         st.caption("國際中間價適合估算行情;實際到銀行換錢請看「銀行牌告」。")
         c1, c2 = st.columns(2)
         amt = c1.number_input("金額", 0.0, 1e12, 1000.0)
-        base = c2.selectbox("幣別", [f"{c} {n}" for c, _, n in K.FX_CURRENCIES]).split()[0]
+        base = U.pick("幣別", [f"{c} {n}" for c, _, n in K.FX_CURRENCIES], container=c2).split()[0]
         st.caption(f"匯率日期 {d['date']}")
         cols = st.columns(4)
         for i, (code, flag, name) in enumerate(x for x in K.FX_CURRENCIES if x[0] != base):
@@ -685,7 +687,7 @@ def page_invoice():
             (st.success if win else st.caption)(f"🎉 中了 {len(win)} 張!" if win else f"共 {len(rows)} 張發票,目前沒有中獎")
             st.dataframe(pd.DataFrame(rows, columns=["發票", "日期", "期別", "結果", "獎金", "說明"]), hide_index=True)
     with t1:
-        p = ps[st.selectbox("期別", range(len(ps)), format_func=lambda i: ps[i]["title"])]
+        p = ps[U.pick("期別", range(len(ps)), format_func=lambda i: ps[i]["title"])]
         st.caption(f"領獎期間 {p['claim_start']} ~ {p['claim_end']}" + ("  ⚠️ 已過期" if K.tw_now().date().isoformat() > p["claim_end"] else ""))
         a, b = st.columns(2)
         a.metric("特別獎 1,000萬", p["special"][0]); b.metric("特獎 200萬", p["grand"][0])
@@ -720,7 +722,7 @@ def page_bingo():
             h3.markdown("**⏳ 遺漏最久前 10**<br>" + balls(sorted(sorted(om, key=lambda n: (-om[n], n))[:10])), unsafe_allow_html=True)
             if pick_mode == "策略自動":
                 strategies = {"🔥 追擊熱門": "hot", "❄️ 抄底冷門": "cold", "⚖️ 冷熱平衡": "mix", "⏳ 遺漏最久": "omit", "🎲 完全隨機": "random"}
-                picks = K.bingo_pick(draws, strategies[st.selectbox("選號策略", list(strategies))], stars, P)
+                picks = K.bingo_pick(draws, strategies[U.pick("選號策略", list(strategies))], stars, P)
             else:
                 picks = sorted(st.multiselect(f"選號盤(最多 {stars} 個)", list(range(1, 81)), max_selections=stars, format_func=lambda n: f"{n:02d}"))
             st.markdown("**你的號碼**<br>" + (balls(picks) if picks else "尚未選號"), unsafe_allow_html=True)
@@ -796,9 +798,9 @@ def page_lotto():
     notes = {"anti": "不提高中獎機率,只避開生日號、連號、等差直線,中浮動獎金時較不易分獎。", "random": "每組號碼被開出的機率完全相同。", "structure": "和值/AC值/奇偶等只是民間說法,統計上沒有優勢。"}
     with t1:
         c1, c2, c3 = st.columns(3)
-        kind = c1.selectbox("彩種", list(K.LOTTO_RULES))
+        kind = U.seg("彩種", list(K.LOTTO_RULES), container=c1)
         n = c2.slider("注數", 1, 10, 5)
-        mode = c3.selectbox("選號方式", list(K.LOTTO_MODES), format_func=K.LOTTO_MODES.get)
+        mode = U.pick("選號方式", list(K.LOTTO_MODES), format_func=K.LOTTO_MODES.get, container=c3)
         st.caption("ℹ️ " + notes[mode])
         hot = st.checkbox("威力彩第二區參考近期熱門號(需連網)") if kind == "威力彩" else False
         if st.button("🎲 產生號碼", type="primary"):
@@ -819,7 +821,7 @@ def page_lotto():
             st.success(f"共 {len(ts)} 注,合計 {len(ts) * K.LOTTO_PRICE[kind]:,} 元")
             st.code("\n".join(lines), language=None)
     with t2:
-        kind2 = st.selectbox("彩種 ", list(K.LOTTO_RULES))
+        kind2 = U.seg("彩種 ", list(K.LOTTO_RULES))
         o = K.lotto_odds(kind2)
         a, b, c = st.columns(3)
         a.metric("單注價格", f"{o['price']} 元"); b.metric("頭獎機率", f"1/{1 / o['rows'][0][2]:,.0f}"); c.metric("任一獎機率", f"1/{1 / o['any']:.1f}")
@@ -838,10 +840,10 @@ def page_advisor():
     hero("🤖", "AI 下注顧問", "依預算算出最合理的方案、號碼與完整勝算(含賓果加倍)")
     c1, c2 = st.columns(2)
     bud = c1.select_slider("預算(元)", [100, 200, 300, 500, 1000, 2000, 5000, 10000], 500)
-    goal = c2.selectbox("目標", list(K.GOAL_LABELS), format_func=K.GOAL_LABELS.get)
+    goal = U.pick("目標", list(K.GOAL_LABELS), format_func=K.GOAL_LABELS.get, container=c2)
     c3, c4 = st.columns(2)
-    game = c3.selectbox("玩法", ["AI", "賓果", "今彩539", "大樂透", "威力彩"], format_func=lambda x: "AI 幫我選" if x == "AI" else x)
-    mult = c4.selectbox("賓果加倍(2~50 倍)", ["AI", 1, 2, 3, 4, 5, 10, 20, 50], format_func=lambda x: "AI 決定" if x == "AI" else ("不加倍" if x == 1 else f"{x} 倍"))
+    game = U.pick("玩法", ["AI", "賓果", "今彩539", "大樂透", "威力彩"], format_func=lambda x: "AI 幫我選" if x == "AI" else x, container=c3)
+    mult = U.pick("賓果加倍(2~50 倍)", ["AI", 1, 2, 3, 4, 5, 10, 20, 50], format_func=lambda x: "AI 決定" if x == "AI" else ("不加倍" if x == 1 else f"{x} 倍"), container=c4)
     try:
         r = K.advisor_plan(bud, goal, game, mult)
     except ValueError as e:
@@ -911,7 +913,7 @@ def page_photo():
     f = st.file_uploader("上傳照片(jpg / png / webp / bmp)", ["jpg", "jpeg", "png", "webp", "bmp"])
     if f:
         c0, c1, c2 = st.columns([2, 1, 1])
-        size = K.PHOTO_SIZES[c0.selectbox("尺寸", list(K.PHOTO_SIZES), index=1)]
+        size = K.PHOTO_SIZES[U.pick("尺寸", list(K.PHOTO_SIZES), index=1, container=c0)]
         cx, cy = c1.slider("左右", 0.0, 1.0, 0.5), c2.slider("上下(小=偏上)", 0.0, 1.0, 0.4)
         d1, d2 = st.columns(2)
         sheet = d1.checkbox("排滿 4×6 吋相紙(可直接沖印)")
@@ -1229,7 +1231,7 @@ def page_wheel():
     if st.session_state.get("wheel_pick") not in wheels:
         st.session_state["wheel_pick"] = next(iter(wheels))
     c1, c2 = st.columns([3, 1])
-    name = c1.selectbox("選擇轉盤", list(wheels), key="wheel_pick")
+    name = U.pick("選擇轉盤", list(wheels), key="wheel_pick", container=c1)
     c2.button("🗑️ 刪除此轉盤", on_click=delete_wheel, disabled=len(wheels) <= 1)
     a, b = st.columns([3, 2])
     text = a.text_area("轉盤選項(每行一個;行尾加 *數字 設權重,例:拉麵*3)", "\n".join(W.to_lines(wheels[name])), height=210, key=f"wta_{name}_{U.rev()}")
@@ -1530,11 +1532,11 @@ def page_bus():
     names = list(TD.CITIES)
     saved = U.pref("bus_city", "臺南市")
     c1, c2 = st.columns(2)
-    cname = c1.selectbox("縣市", names, index=names.index(saved) if saved in names else 0, key="bus_city_sel")
+    cname = U.pick("縣市", names, index=names.index(saved) if saved in names else 0, key="bus_city_sel", container=c1)
     U.remember("bus_city", cname)
     city = TD.CITIES[cname]
     rts = safe(bus_routes, city) or []
-    route = c2.selectbox("路線（可以直接打字搜尋）", rts, index=None, placeholder="例如:紅4、綠幹線", key=f"bus_route_{city}")
+    route = U.pick("路線（點了可以打字搜尋）", rts, index=None, placeholder="點這裡選路線(例如:紅4、綠幹線)", key=f"bus_route_{city}", search=True, container=c2)
     if not route:
         return
     subs = safe(bus_sor, city, route) or []
@@ -1542,10 +1544,10 @@ def page_bus():
         st.caption("查不到這條路線的站牌。")
         return
     d1, d2 = st.columns(2)
-    si = d1.selectbox("方向", range(len(subs)), format_func=lambda i: subs[i]["name"], key=f"bus_dir_{city}_{route}")
+    si = U.pick("方向", range(len(subs)), format_func=lambda i: subs[i]["name"], key=f"bus_dir_{city}_{route}", container=d1)
     seq = subs[si]["stops"]
-    ki = d2.selectbox("上車站（可以直接打字搜尋）", range(len(seq)), index=None, placeholder="選上車站",
-                      format_func=lambda i: f"{i + 1}. {seq[i][1]}", key=f"bus_stop_{city}_{route}_{si}")
+    ki = U.pick("上車站（點了可以打字搜尋）", range(len(seq)), index=None, placeholder="點這裡選上車站", search=True, container=d2,
+                 format_func=lambda i: f"{i + 1}. {seq[i][1]}", key=f"bus_stop_{city}_{route}_{si}")
     if ki is None:
         return
     item = {"city": city, "route": route, "sub": subs[si]["sub"], "dir": subs[si]["dir"], "stop": seq[ki][0],
