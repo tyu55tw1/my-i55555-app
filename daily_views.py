@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
@@ -20,6 +21,40 @@ import wheel as W
 from ui import _esc, hero
 
 WD = D.WD
+# 各縣市的鄉鎮市區(停水停電選地區用,不用打字)
+TOWNS = {k: v.split() for k, v in {
+    "臺北市": "中正區 大同區 中山區 松山區 大安區 萬華區 信義區 士林區 北投區 內湖區 南港區 文山區",
+    "新北市": "板橋區 三重區 中和區 永和區 新莊區 新店區 樹林區 鶯歌區 三峽區 淡水區 汐止區 瑞芳區 土城區 蘆洲區 五股區 泰山區 林口區 "
+              "深坑區 石碇區 坪林區 三芝區 石門區 八里區 平溪區 雙溪區 貢寮區 金山區 萬里區 烏來區",
+    "基隆市": "仁愛區 信義區 中正區 中山區 安樂區 暖暖區 七堵區",
+    "桃園市": "桃園區 中壢區 大溪區 楊梅區 蘆竹區 大園區 龜山區 八德區 龍潭區 平鎮區 新屋區 觀音區 復興區",
+    "新竹市": "東區 北區 香山區",
+    "新竹縣": "竹北市 竹東鎮 新埔鎮 關西鎮 湖口鄉 新豐鄉 芎林鄉 橫山鄉 北埔鄉 寶山鄉 峨眉鄉 尖石鄉 五峰鄉",
+    "苗栗縣": "苗栗市 頭份市 苑裡鎮 通霄鎮 竹南鎮 後龍鎮 卓蘭鎮 大湖鄉 公館鄉 銅鑼鄉 南庄鄉 頭屋鄉 三義鄉 西湖鄉 造橋鄉 三灣鄉 獅潭鄉 泰安鄉",
+    "臺中市": "中區 東區 南區 西區 北區 西屯區 南屯區 北屯區 豐原區 東勢區 大甲區 清水區 沙鹿區 梧棲區 后里區 神岡區 潭子區 大雅區 "
+              "新社區 石岡區 外埔區 大安區 烏日區 大肚區 龍井區 霧峰區 太平區 大里區 和平區",
+    "彰化縣": "彰化市 員林市 鹿港鎮 和美鎮 北斗鎮 溪湖鎮 田中鎮 二林鎮 線西鄉 伸港鄉 福興鄉 秀水鄉 花壇鄉 芬園鄉 大村鄉 埔鹽鄉 埔心鄉 "
+              "永靖鄉 社頭鄉 二水鄉 田尾鄉 埤頭鄉 芳苑鄉 大城鄉 竹塘鄉 溪州鄉",
+    "南投縣": "南投市 埔里鎮 草屯鎮 竹山鎮 集集鎮 名間鄉 鹿谷鄉 中寮鄉 魚池鄉 國姓鄉 水里鄉 信義鄉 仁愛鄉",
+    "雲林縣": "斗六市 斗南鎮 虎尾鎮 西螺鎮 土庫鎮 北港鎮 古坑鄉 大埤鄉 莿桐鄉 林內鄉 二崙鄉 崙背鄉 麥寮鄉 東勢鄉 褒忠鄉 臺西鄉 元長鄉 "
+              "四湖鄉 口湖鄉 水林鄉",
+    "嘉義市": "東區 西區",
+    "嘉義縣": "太保市 朴子市 布袋鎮 大林鎮 民雄鄉 溪口鄉 新港鄉 六腳鄉 東石鄉 義竹鄉 鹿草鄉 水上鄉 中埔鄉 竹崎鄉 梅山鄉 番路鄉 大埔鄉 阿里山鄉",
+    "臺南市": "中西區 東區 南區 北區 安平區 安南區 永康區 歸仁區 新化區 左鎮區 玉井區 楠西區 南化區 仁德區 關廟區 龍崎區 官田區 麻豆區 "
+              "佳里區 西港區 七股區 將軍區 學甲區 北門區 新營區 後壁區 白河區 東山區 六甲區 下營區 柳營區 鹽水區 善化區 大內區 山上區 "
+              "新市區 安定區",
+    "高雄市": "楠梓區 左營區 鼓山區 三民區 鹽埕區 前金區 新興區 苓雅區 前鎮區 旗津區 小港區 鳳山區 大寮區 鳥松區 林園區 仁武區 大樹區 "
+              "大社區 岡山區 路竹區 橋頭區 梓官區 彌陀區 永安區 燕巢區 田寮區 阿蓮區 茄萣區 湖內區 旗山區 美濃區 內門區 杉林區 甲仙區 "
+              "六龜區 茂林區 桃源區 那瑪夏區",
+    "屏東縣": "屏東市 潮州鎮 東港鎮 恆春鎮 萬丹鄉 長治鄉 麟洛鄉 九如鄉 里港鄉 鹽埔鄉 高樹鄉 萬巒鄉 內埔鄉 竹田鄉 新埤鄉 枋寮鄉 新園鄉 "
+              "崁頂鄉 林邊鄉 南州鄉 佳冬鄉 琉球鄉 車城鄉 滿州鄉 枋山鄉 三地門鄉 霧臺鄉 瑪家鄉 泰武鄉 來義鄉 春日鄉 獅子鄉 牡丹鄉",
+    "宜蘭縣": "宜蘭市 羅東鎮 蘇澳鎮 頭城鎮 礁溪鄉 壯圍鄉 員山鄉 冬山鄉 五結鄉 三星鄉 大同鄉 南澳鄉",
+    "花蓮縣": "花蓮市 鳳林鎮 玉里鎮 新城鄉 吉安鄉 壽豐鄉 光復鄉 豐濱鄉 瑞穗鄉 富里鄉 秀林鄉 萬榮鄉 卓溪鄉",
+    "臺東縣": "臺東市 成功鎮 關山鎮 卑南鄉 大武鄉 太麻里鄉 東河鄉 長濱鄉 鹿野鄉 池上鄉 綠島鄉 延平鄉 海端鄉 達仁鄉 金峰鄉 蘭嶼鄉",
+    "澎湖縣": "馬公市 湖西鄉 白沙鄉 西嶼鄉 望安鄉 七美鄉",
+    "金門縣": "金城鎮 金湖鎮 金沙鎮 金寧鄉 烈嶼鄉 烏坵鄉",
+    "連江縣": "南竿鄉 北竿鄉 莒光鄉 東引鄉",
+}.items()}
 LOADED_AT = __import__("time").time()   # app.py 用來判斷檔案更新後要不要重新載入
 
 # ── 快取包裝 ──
@@ -54,18 +89,40 @@ def _nav(lat, lon) -> str:
     return f"https://www.google.com/maps/dir/?api=1&destination={lat:.6f},{lon:.6f}"
 
 
+HOME_CHIP = "🏠 家"
+
+
+def home_road() -> str:
+    """從「我家」的說明文字抓出路名,抓不到回傳 ""。
+    說明有兩種:地圖查到的「🏠 我家(中華路, 甲頂里, 永康區, 臺南市, …)」、或「…台南市永康區中華路一段 100 號…」。"""
+    home = U.pref("home_loc")
+    s = str(home[2]) if home and len(home) > 2 else ""
+    for part in re.split(r"[,，()（）\s]+", s):
+        part = re.sub(r"^[一-鿿]{2,3}?[市縣](?=.)", "", part)
+        part = re.sub(r"^[一-鿿]{1,3}?[區鄉鎮市](?=.)", "", part)
+        m = re.match(r"([一-鿿]{1,8}?(?:路|街|大道)(?:[一二三四五六七八九十]段)?)", part)
+        if m:
+            return m.group(1)
+    return ""
+
+
 def where(key: str) -> tuple[float, float, str] | None:
     """選位置:輸入的地址 > 定位 > 存的「我家」。回傳 (lat, lon, 說明)。"""
     home = U.pref("home_loc")
     c1, c2 = st.columns([1, 2], vertical_alignment="bottom")
     with c1:
         pos = U.geolocate(f"geo_{key}", "📍 用我的位置")
-    q = c2.text_input("或輸入地址、地標", key=f"addr_{key}", placeholder="例如:台南市永康區中華路、台南火車站").strip()
+    q = U.chip_text("或選地址、地標", f"addr_{key}", recent_field="addr", record=False, container=c2,
+                    top=[(HOME_CHIP, HOME_CHIP)] if home else (), empty_label="✖ 不填(用定位或我家)",
+                    placeholder="例如:台南市永康區中華路、台南火車站", text_btn="⌨️ 打地址或地標")
     loc = None
-    if q:
+    if q == HOME_CHIP and home:
+        loc = tuple(home)
+    elif q:
         g = U.quiet(geocode_c, q)
         if g:
             loc = g
+            U.recent_add("addr", q)
         else:
             st.caption("⚠️ 找不到這個地址,換個寫法試試(例如加上縣市、改用路名或地標)")
     if loc is None and pos:
@@ -218,8 +275,15 @@ def page_outage():
     c1, c2, c3 = st.columns([1.2, 1, 1.4])
     saved = U.pref("out_county", "臺南市")
     county = U.pick("縣市", D.COUNTIES, index=D.COUNTIES.index(saved) if saved in D.COUNTIES else 13, key=f"out_c_{U.rev()}", container=c1)
-    district = c2.text_input("鄉鎮市區", U.pref("out_district", ""), placeholder="例如:永康區", key=f"out_d_{U.rev()}").strip()
-    kw = c3.text_input("路名或里名(可空白)", U.pref("out_kw", ""), placeholder="例如:中華路", key=f"out_k_{U.rev()}").strip()
+    towns = [""] + TOWNS.get(county, [])
+    sd = U.pref("out_district", "")
+    sd = sd if sd in towns else next((t for t in towns if t and sd and D.tw(t).startswith(D.tw(sd))), "")
+    district = U.pick("鄉鎮市區", towns, index=towns.index(sd), key=f"out_d_{county}_{U.rev()}", container=c2,
+                      format_func=lambda t: t or "全部(整個縣市)")
+    road = home_road()
+    kw = U.chip_text("路名或里名(可空白)", f"out_k_{U.rev()}", value=U.pref("out_kw", ""), container=c3, recent_field="out_kw",
+                     top=[(f"🏠 家附近:{road}", road)] if road else (), empty_label="✖ 不限路名",
+                     placeholder="例如:中華路", text_btn="⌨️ 打路名或里名")
     for k, v in (("out_county", county), ("out_district", district), ("out_kw", kw)):
         U.remember(k, v)
     st.caption("設定好之後,首頁會在你這區有停水、停電時提醒你(今天起兩天內)。")
@@ -526,6 +590,16 @@ def _add_entry(e: dict):
     return True
 
 
+LEDGER_AMOUNTS = [50, 80, 100, 120, 150, 200, 300, 500, 1000]
+NOTE_CATS = {"早餐": "🍱 餐飲", "午餐": "🍱 餐飲", "晚餐": "🍱 餐飲", "宵夜": "🍱 餐飲", "飲料": "🍱 餐飲", "咖啡": "🍱 餐飲", "零食": "🍱 餐飲",
+             "交通": "🚌 交通", "加油": "🚌 交通", "停車": "🚌 交通", "捷運公車": "🚌 交通", "計程車": "🚌 交通", "日用品": "🛒 日用",
+             "超市": "🛒 日用", "全聯": "🛒 日用", "藥局": "💊 醫療", "看醫生": "💊 醫療", "電影": "🎮 娛樂", "衣服": "👕 服飾",
+             "水電瓦斯": "💡 帳單", "電話費": "💡 帳單", "紅包禮金": "🎁 人情"}
+NOTE_PRESETS = list(NOTE_CATS)
+DUE_NAMES = ["驗車", "駕照到期", "護照到期", "身分證換發", "繳稅", "保險", "繳費", "房租", "信用卡", "電話費", "水電費", "停車月租",
+             "健檢", "牙醫洗牙", "機車保養", "汽車保養", "寵物疫苗", "會員續約"]
+
+
 SUB_PRESETS = [("Netflix", 390), ("Spotify", 149), ("YouTube Premium", 199), ("Disney+", 270), ("iCloud+ 50GB", 30),
                ("ChatGPT Plus", 650), ("手機月租", 499), ("健身房", 1000)]
 
@@ -535,18 +609,33 @@ def page_ledger():
     today = K.tw_now().date()
     t1, t2, t3, t4 = st.tabs(["✍️ 記一筆", "📷 掃發票", "📊 每月統計", "🔁 訂閱"])
     with t1:
-        with st.form("ledger_add", clear_on_submit=True):
-            a, b = st.columns(2)
-            d = a.date_input("日期", today)
-            amt = b.number_input("金額", min_value=0, step=10, value=None, placeholder="例如:120")
-            cat = st.pills("類別", D.CATS, default=D.CATS[0])
-            note = st.text_input("備註(可空白)", placeholder="例如:午餐便當")
-            if st.form_submit_button("➕ 記下來", type="primary"):
-                if not amt:
-                    st.warning("請輸入金額")
-                else:
-                    _add_entry({"d": d.isoformat(), "amt": int(amt), "cat": cat or D.CATS[-1], "note": note.strip()})
-                    st.success(f"已記下 {cat} {amt:,} 元")
+        ss = st.session_state
+        if "led_msg" in ss:
+            st.success(ss.pop("led_msg"))
+        a, b = st.columns(2)
+        d = a.date_input("日期", today, key="led_d")
+        amt = U.amount_pick("金額", "led_amt", 0, 10_000_000, None, LEDGER_AMOUNTS, unit="元", container=b, placeholder="點一下輸入金額")
+        if ss.get("_led_cat_next") in D.CATS:
+            ss["led_cat"] = ss.pop("_led_cat_next")
+        ss.setdefault("led_cat", D.CATS[0])
+        cat = st.pills("類別", D.CATS, key="led_cat")
+
+        def note_cat():   # 點「早餐」「加油」這類常用備註,類別也跟著換(下次重跑、類別方塊建立前才套用)
+            c = NOTE_CATS.get(ss.get("led_note"))
+            if c in D.CATS:
+                ss["_led_cat_next"] = c
+
+        note = U.chip_text("備註(可空白)", "led_note", NOTE_PRESETS, placeholder="例如:午餐便當", empty_label="✖ 不寫備註",
+                           text_ph="例如:午餐便當", on_change=note_cat)
+        if st.button("➕ 記下來", type="primary", key="led_add"):
+            if not amt:
+                st.warning("請輸入金額")
+            else:
+                _add_entry({"d": d.isoformat(), "amt": int(amt), "cat": cat or D.CATS[-1], "note": note.strip()})
+                ss["led_msg"] = f"已記下 {cat or D.CATS[-1]} {amt:,} 元" + (f"({note})" if note else "")
+                for k in ("led_amt", "led_note"):
+                    ss.pop(k, None)
+                st.rerun()
         rows = ledger()
         ym = today.strftime("%Y-%m")
         st.caption(f"這個月已經花 {month_total(rows, ym):,.0f} 元・今天 {sum(float(x['amt']) for x in rows if x['d'] == today.isoformat()):,.0f} 元")
@@ -703,22 +792,26 @@ def page_dues():
     if p and st.button("➕ 加入這個", key="due_preset"):
         U.remember("dues", dues + [{"name": p[0], "kind": p[1], "month": p[2] or 1, "day": p[3], "before": p[4], "note": p[5]}])
         st.rerun()
-    with st.form("due_add", clear_on_submit=True):
+    with st.container(border=True):
         a, b = st.columns(2)
-        name = a.text_input("名稱", placeholder="例如:驗車、駕照到期、護照到期")
-        kind = b.radio("多久一次", ["單次", "每月", "每年"], horizontal=True)
+        name = U.chip_text("名稱", "due_name", DUE_NAMES, placeholder="例如:驗車、駕照到期、護照到期", container=a,
+                           text_ph="例如:驗車、駕照到期")
+        kind = b.radio("多久一次", ["單次", "每月", "每年"], horizontal=True, key="due_kind")
         c1, c2, c3 = st.columns(3)
-        dd = c1.date_input("日期(單次/每年用這個日期)", today + timedelta(days=30))
-        day = c2.number_input("每月幾號(每月用)", 1, 31, 15)
-        before = c3.number_input("提早幾天提醒", 0, 60, 7)
-        note = st.text_input("備註(可空白)")
-        if st.form_submit_button("➕ 新增", type="primary"):
+        dd = c1.date_input("日期(單次/每年用這個日期)", today + timedelta(days=30), key="due_dd")
+        day = U.amount_pick("每月幾號(每月用)", "due_day", 1, 31, 15, [1, 5, 10, 15, 20, 25, 28, 31], container=c2,
+                            preset_label=lambda x: f"{x} 號")
+        before = U.amount_pick("提早幾天提醒", "due_before", 0, 60, 7, [0, 1, 2, 3, 5, 7, 10, 14, 30], unit="天", container=c3)
+        note = U.chip_text("備註(可空白)", "due_note", placeholder="例如:記得帶行照", empty_label="✖ 不寫備註")
+        if st.button("➕ 新增", type="primary", key="due_add"):
             if not name.strip():
                 st.warning("請填名稱")
             else:
                 it = {"name": name.strip(), "kind": kind, "before": int(before), "note": note.strip()}
                 it |= {"date": dd.isoformat()} if kind == "單次" else {"day": int(day)} if kind == "每月" else {"month": dd.month, "day": dd.day}
                 U.remember("dues", dues + [it])
+                for k in ("due_name", "due_note", "due_day", "due_before", "due_dd"):
+                    st.session_state.pop(k, None)
                 st.rerun()
     if dues:
         with st.expander("✏️ 修改 / 刪除(改完按儲存)"):

@@ -41,7 +41,7 @@ DV.D = _D
 from streamlit.components.v1 import html as components_html
 from ui import _esc, hero, safe
 
-VERSION = "v2.6.1-下拉改方塊"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
+VERSION = "v2.6.2-打字改點選"   # 每次改版更新這裡,畫面最底下會顯示,方便確認雲端是不是新版
 st.set_page_config(page_title="全方位生活助手", page_icon="🧰", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.10);--line:rgba(128,128,128,.24);--ac:#d9441a;--up:#e5484d;--down:#1f9d55}
@@ -382,7 +382,10 @@ def page_movies():
     if c3.button("🔄 重新整理"):
         refresh_movies()
         st.rerun()
-    flt = st.text_input("🔍 篩選", placeholder="輸入電影或戲院名稱").strip().casefold()
+    flt = st.text_input("🔍 篩選", placeholder="輸入電影或戲院名稱", key="mv_flt").strip()
+    U.recent_pills("mv_flt", "mv_flt")
+    U.recent_add("mv_flt", flt)
+    flt = flt.casefold()
     cs = safe(cinemas, K.REGIONS[region])
     if cs:
         if mode == "依戲院":
@@ -552,12 +555,16 @@ def weather_view():
     k = f"wx_city_{U.rev()}"
     pick = U.pick("快速選城市", list(cities), index=list(cities).index(p0) if p0 in cities else 0, key=k, container=c1,
                    on_change=lambda: (U.remember("city", st.session_state[k]), U.remember("city_set", True)))
-    q = c2.text_input("或輸入任何城市(英文名)", cities[pick] or U.pref("city_q", "Tokyo"), key=f"wx_q_{pick}_{U.rev()}").strip() or "Taipei"
-    if not cities[pick]:
-        U.remember("city_q", q)
+    def world():   # 選了國外城市:左邊自動切到「其他城市」
+        st.session_state[k] = "其他城市"
+        for n, v in (("city", "其他城市"), ("city_set", True), ("city_q", st.session_state[f"wx_q_{U.rev()}"])):
+            U.remember(n, v)
+
+    wq = U.city_pick("🌏 國外城市", f"wx_q_{U.rev()}", value=U.pref("city_q", "Tokyo"), container=c2, on_change=world)
+    q = (cities[pick] or wq or "Taipei").strip()
     d = safe(weather, q)
     if d:
-        place = pick if cities[pick] else K.AREA_ZH.get(q, d["area"] or q)  # 常用城市一律顯示中文名
+        place = pick if cities[pick] else U.CITY_ZH.get(q) or K.AREA_ZH.get(q, d["area"] or q)  # 常用城市一律顯示中文名
         st.subheader(f"{d['icon']} {place}・{d['desc']}")
         a, b, c, e = st.columns(4)
         a.metric("🌡️ 氣溫", f"{d['temp']}°C"); b.metric("🥵 體感", f"{d['feel']}°C")
@@ -580,7 +587,7 @@ def page_oil():
         st.caption(f"牌價日期 {d['date']} ・ {d['src']}")
         for col, name, p, pv in zip(st.columns(4), K.OIL_NAMES, d["prices"], d["prev"] or [None] * 4):
             col.metric(name, f"{p:.1f}", f"{p - pv:+.1f}" if pv else None, delta_color="inverse")
-        lit = st.number_input("加油量(公升)", 1.0, 200.0, 30.0)
+        lit = U.amount_pick("加油量(公升)", "oil_lit", 1.0, 200.0, 30.0, presets=[5, 10, 15, 20, 25, 30, 40, 50], unit="公升")
         st.success("  |  ".join(f"{n.split()[0]}:{lit * p:,.0f} 元" for n, p in zip(K.OIL_NAMES, d["prices"])))
 
 
@@ -599,11 +606,8 @@ def page_stock():
 
 
 def stock_detail():
-    quick = {"自行輸入": "", "0050 元大台灣50": "0050", "0056 元大高股息": "0056", "00878 國泰永續高股息": "00878",
-             "2330 台積電": "2330", "2317 鴻海": "2317", "2454 聯發科": "2454"}
-    c1, c2, c3 = st.columns([2, 1, 2])
-    qk = U.pick("常用", list(quick), container=c1)
-    code = c2.text_input("代號", quick[qk] or "0050").strip()
+    c1, c3 = st.columns([3, 2])
+    code = U.stock_pick("股票", "stk_code", value="0050", container=c1) or "0050"
     rng = c3.radio("區間", list(K.STOCK_RANGES), horizontal=True, index=1)
     auto = st.toggle("⏱️ 自動更新(30 秒)", key="stock_auto") if hasattr(st, "toggle") else False
 
@@ -655,7 +659,8 @@ def fx_mid_view(d):
     if d:
         st.caption("國際中間價適合估算行情;實際到銀行換錢請看「銀行牌告」。")
         c1, c2 = st.columns(2)
-        amt = c1.number_input("金額", 0.0, 1e12, 1000.0)
+        amt = U.amount_pick("金額", "fx_mid_amt", 0.0, 1e12, 1000.0, presets=[100, 500, 1000, 3000, 5000, 10000, 50000, 100000],
+                            container=c1)
         base = U.pick("幣別", [f"{c} {n}" for c, _, n in K.FX_CURRENCIES], container=c2).split()[0]
         st.caption(f"匯率日期 {d['date']}")
         cols = st.columns(4)
@@ -1101,8 +1106,11 @@ def page_shop():
         hide_acc = b.checkbox("隱藏配件(殼、貼、線、收納包…)", True)
         exclude = a.text_input("排除字詞(空白分隔)", placeholder="例如:福利品 二手 展示")
         p1, p2 = b.columns(2)
-        pmin = p1.number_input("最低價", 0, 10_000_000, 0, step=100)
-        pmax = p2.number_input("最高價(0=不限)", 0, 10_000_000, 0, step=100)
+        prices = [0, 100, 300, 500, 1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000]
+        pmin = U.amount_pick("最低價", "shop_pmin", 0, 10_000_000, 0, prices, unit="元", container=p1,
+                             preset_label=lambda x: "不限" if not x else f"{x:,} 元")
+        pmax = U.amount_pick("最高價(0=不限)", "shop_pmax", 0, 10_000_000, 0, prices, unit="元", container=p2,
+                             preset_label=lambda x: "不限" if not x else f"{x:,} 元")
     if not kw:
         st.markdown("<div class='card'><div class='ct'>💡 怎麼用</div><div class='cs'>"
                     "・輸入<b>品牌 + 型號</b>最準,例如「羅技 M720」「象印 NL-AAF10」<br>"
@@ -1158,8 +1166,11 @@ def page_shop():
     st.caption(f"已過濾 {dropped} 筆不相關或配件{odd}")
     wt = _shop_watch().get(kw)
     with st.popover("🔔 已追蹤・設定目標價" if wt else "🔔 追蹤這個商品的價格"):
-        tgt = st.number_input("目標價(到這個價格以下會在首頁提醒,0 = 不設定)", 0, 10_000_000,
-                              int((wt or {}).get("target") or 0), step=100, key=f"shop_tgt_{kw}")
+        low = int(sm["min"])
+        tgt = U.amount_pick("目標價(到這個價格以下會在首頁提醒,0 = 不設定)", f"shop_tgt_{kw}", 0, 10_000_000,
+                            int((wt or {}).get("target") or 0), unit="元", recent_field="shop_tgt",
+                            presets=sorted({0} | {max(0, round(low * r / 10) * 10) for r in (0.95, 0.9, 0.85, 0.8)}),
+                            preset_label=lambda x: "不設定" if not x else f"{x:,} 元")
         cc1, cc2 = st.columns(2)
         if cc1.button("💾 儲存追蹤", type="primary", key=f"shop_tgt_save_{kw}"):
             _shop_watch()[kw] = {"target": tgt, "hist": (wt or {}).get("hist") or []}

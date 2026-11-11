@@ -204,7 +204,10 @@ def page_parking():
     c1, c2, c3 = st.columns([1.2, 2, 1.3])
     area = U.pick("行政區", areas, index=areas.index(saved) if saved in areas else 0, key=f"park_area_{U.rev()}", container=c1)
     U.remember("park_area", area)
-    q = c2.text_input("🔍 搜尋名稱或地址", placeholder="例如:市府、南京東路、101").strip()
+    q = c2.text_input("🔍 搜尋名稱或地址", placeholder="例如:市府、南京東路、101", key="park_q").strip()
+    with c2:
+        U.recent_pills("park_q", "park_q")
+    U.recent_add("park_q", q)
     kind = c3.radio("車種", ["汽車", "機車"], horizontal=True)
     c4, c5, c6 = st.columns([1.3, 1.3, 1.4])
     with c4:
@@ -364,16 +367,29 @@ def page_split():
     t1, t2 = st.tabs(["🧾 詳細分帳", "⚡ 快速平分"])
     with t2:
         c1, c2, c3 = st.columns(3)
-        total = c1.number_input("總金額", 0, 10_000_000, 1200, step=100)
-        n = c2.number_input("人數", 1, 100, 4)
+        total = U.amount_pick("總金額", "quick_total", 0, 10_000_000, 1200, [300, 500, 800, 1000, 1200, 1500, 2000, 3000, 5000, 10000],
+                              unit="元", container=c1)
+        n = U.amount_pick("人數", "quick_n", 1, 100, 4, list(range(2, 11)), unit="人", container=c2)
         svc = c3.checkbox("加一成服務費", key="quick_svc")
         amt = total * (1.1 if svc else 1)
         each = math.ceil(amt / n)
         st.markdown(f"<div class='card' style='text-align:center'><div class='cs'>每人</div><div class='big' style='color:var(--ac)'>NT$ {each:,}</div>"
                     f"<div class='cs'>合計 {amt:,.0f} 元 ÷ {n} 人(無條件進位,多收 {each * n - amt:,.0f} 元)</div></div>", unsafe_allow_html=True)
     with t1:
-        txt = st.text_input("👥 成員(用空白或逗號分隔)", " ".join(U.pref("split_members", ["我", "小明", "小華"])), key=f"split_m_{U.rev()}")
+        tk = f"split_m_{U.rev()}"
+        txt = st.text_input("👥 成員(用空白或逗號分隔)", " ".join(U.pref("split_members", ["我", "小明", "小華"])), key=tk)
         members = list(dict.fromkeys(m for m in re.split(r"[\s,，、]+", txt.strip()) if m))[:20]
+        names = list(dict.fromkeys(members + [x for x in U.recent("split_names") if isinstance(x, str)]))[:20]
+        pk = f"split_pills_{U.rev()}"
+        st.session_state[pk] = members
+
+        def toggle():   # 點名字方塊:加入/移除成員(改打字欄的內容)
+            sel = st.session_state.get(pk) or []
+            st.session_state[tk] = " ".join([m for m in members if m in sel] + [m for m in sel if m not in members])
+
+        st.pills("點名字加入/移除", names, selection_mode="multi", key=pk, on_change=toggle)
+        for m in reversed(members):
+            U.recent_add("split_names", m, n=20)
         if len(members) < 2:
             st.info("請至少輸入兩位成員")
             return
@@ -655,7 +671,7 @@ def dividends_view():
     c1, c2, c3 = st.columns([1.2, 1.2, 2])
     only = c1.toggle("只看自選股", False)
     span = U.seg("期間", ["未來 7 天", "未來 30 天", "全部"], index=1, container=c2)
-    q = c3.text_input("🔍 代號或名稱", key="div_q").strip()
+    q = U.stock_pick("🔍 代號或名稱", "div_q", value="", container=c3, empty_label="全部(不篩選)")
     lim = {"未來 7 天": 7, "未來 30 天": 30, "全部": 9999}[span]
     rows = [x for x in dv if (x["date"] - today).days <= lim and (not only or x["code"] in watch)
             and (not q or q in x["code"] or q in x["name"])]
@@ -715,14 +731,16 @@ def bank_view(mid: dict | None):
     bid, ask = rates[cur][kind]
     rate = ask if buying else bid
     c4, c5 = st.columns(2)
-    amt = c4.number_input(f"外幣金額({cur})", 0.0, 1e12, 1000.0, step=100.0, key="bank_amt")
+    amt = U.amount_pick(f"外幣金額({cur})", "bank_amt", 0.0, 1e12, 1000.0, [100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000, 50000],
+                        step=100.0, unit=cur, container=c4)
     twd = amt * rate
     m = 1 / mid[cur] if mid and mid.get(cur) else None
     gap = f"比中間價多付約 NT$ {twd - amt * m:,.0f}({(rate / m - 1) * 100:+.2f}%)" if m and buying else (
         f"比中間價少拿約 NT$ {amt * m - twd:,.0f}({(rate / m - 1) * 100:+.2f}%)" if m else "")
     c4.markdown(f"<div class='card'><div class='cs'>{'需要準備' if buying else '可以換回'}</div><div class='big' style='color:var(--ac)'>NT$ {twd:,.0f}</div>"
                 f"<div class='cs'>匯率 {rate:g}(銀行{'賣出' if buying else '買入'}價)<br>{gap}</div></div>", unsafe_allow_html=True)
-    ntd = c5.number_input("或:我有台幣(NT$)", 0.0, 1e12, 10000.0, step=1000.0, key="bank_twd")
+    ntd = U.amount_pick("或:我有台幣(NT$)", "bank_twd", 0.0, 1e12, 10000.0, [1000, 3000, 5000, 10000, 20000, 30000, 50000, 100000],
+                        step=1000.0, unit="元", container=c5)
     c5.markdown(f"<div class='card'><div class='cs'>{'可以換到' if buying else '需要賣出'}</div><div class='big'>{ntd / rate:,.2f} <small>{cur}</small></div>"
                 f"<div class='cs'>以同一個匯率 {rate:g} 計算</div></div>", unsafe_allow_html=True)
     st.markdown("##### 全部幣別牌告")
