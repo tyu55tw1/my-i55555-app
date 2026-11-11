@@ -87,10 +87,14 @@ export default function(component) {
   btn.onclick = () => {
     if (!navigator.geolocation) { msg.textContent = "此瀏覽器不支援定位"; return; }
     msg.textContent = "定位中…";
-    navigator.geolocation.getCurrentPosition(
-      p => { msg.textContent = ""; setTriggerValue("pos", {lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy}); },
-      e => { msg.textContent = e.code === 1 ? "已拒絕定位權限,請在瀏覽器網址列允許位置存取" : "定位失敗:" + e.message; },
-      {enableHighAccuracy: true, timeout: 12000, maximumAge: 60000});
+    const ok = p => { msg.textContent = ""; setTriggerValue("pos", {lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy}); };
+    const fail = e => { msg.textContent = e.code === 1 ? "已拒絕定位權限,請在瀏覽器網址列允許位置存取" : "定位失敗:" + e.message; };
+    // 先用 GPS(高精準);室內收不到常逾時(2026-11-11 安卓實測 Timeout expired)→ 改用網路定位(Wi-Fi/基地台)再試一次
+    navigator.geolocation.getCurrentPosition(ok, e => {
+      if (e.code === 1) return fail(e);
+      msg.textContent = "改用網路定位…";
+      navigator.geolocation.getCurrentPosition(ok, fail, {enableHighAccuracy: false, timeout: 15000, maximumAge: 300000});
+    }, {enableHighAccuracy: true, timeout: 8000, maximumAge: 60000});
   };
 }
 """
